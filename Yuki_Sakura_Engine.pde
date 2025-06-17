@@ -443,17 +443,8 @@ void keyPressed() {
       } else if (key == ESC) {
         dialogueSystem.toggleMenu();
         key = 0;
-      } else if (key == 's' || key == 'S') {
-        if (keyPressed && (keyCode == CONTROL || keyCode == 157)) { // Ctrl+S
-          saveSystem.quickSave();
-        }
-      } else if (key == 'l' || key == 'L') {
-        if (keyPressed && (keyCode == CONTROL || keyCode == 157)) { // Ctrl+L
-          saveSystem.quickLoad();
-        }
       }
       break;
-      
     case SETTINGS:
       if (key == ESC) {
         currentMode = GameMode.TITLE;
@@ -461,7 +452,6 @@ void keyPressed() {
         key = 0;
       }
       break;
-      
     case LOAD_GAME:
       if (key == ESC) {
         currentMode = GameMode.TITLE;
@@ -582,8 +572,6 @@ class TitleScreen {
     if (audioManager != null) {
       audioManager.playBGM("title");
     }
-    
-    // 創建漸層覆蓋緩存
     createGradientOverlay();
   }
   
@@ -1372,7 +1360,6 @@ class DialogueSystem {
   }
   
   void display() {
-    // 更新縮放比例
     updateScale();
     boolean matrixPushed = false;
     if (screenShake && engineSettings.enableScreenEffects) {
@@ -2007,7 +1994,6 @@ class DialogueSystem {
     float boxY = height - scaleY(230);
     float boxWidth = width - scaleX(100);
     float boxHeight = scaleY(180);
-    
     fill(engineSettings.dialogueBoxColor);
     rect(boxX, boxY, boxWidth, boxHeight, scaleSize(10));
     stroke(255, 255, 255, 150);
@@ -2015,21 +2001,16 @@ class DialogueSystem {
     noFill();
     rect(boxX, boxY, boxWidth, boxHeight, scaleSize(10));
     noStroke();
-    
     float nameBoxX = boxX + scaleX(10);
     float nameBoxY = boxY - scaleY(20);
     float nameBoxWidth = scaleX(150);
     float nameBoxHeight = scaleY(25);
-    
     fill(engineSettings.nameBoxColor);
     rect(nameBoxX, nameBoxY, nameBoxWidth, nameBoxHeight, scaleSize(5));
-    
-    // 語音播放指示器
     if (audioManager != null && audioManager.voiceAutoPlay) {
       if (audioManager.isVoicePlaying()) {
         fill(255, 100, 100, abs(sin(millis() * 0.01)) * 255);
         ellipse(boxX - scaleX(5), nameBoxY + nameBoxHeight/2, scaleSize(8), scaleSize(8));
-        
         if (audioManager.currentVoice != null) {
           try {
             float duration = audioManager.currentVoice.length();
@@ -2045,7 +2026,6 @@ class DialogueSystem {
               noStroke();
             }
           } catch (Exception e) {
-            // 忽略錯誤
           }
         }
       }
@@ -2055,7 +2035,6 @@ class DialogueSystem {
     textAlign(LEFT);
     setResponsiveTextSize(16);
     text(currentNode.speaker, nameBoxX + scaleX(10), nameBoxY + scaleY(17));
-    
     fill(255);
     setResponsiveTextSize(20);
     String displayText = currentNode.text.substring(0, min(textDisplayIndex, currentNode.text.length()));
@@ -2087,19 +2066,16 @@ class DialogueSystem {
   // 響應式選擇繪製
   void drawChoices() {
     float choiceY = height - scaleY(330);
-    
     fill(200, 200, 255);
     textAlign(CENTER);
     setResponsiveTextSize(13);
     text("請選擇回應", width/2, choiceY - scaleY(15));
-    
     for (int i = 0; i < currentNode.choices.size(); i++) {
       Choice choice = currentNode.choices.get(i);
       float y = choiceY + i * scaleY(55);
       float choiceWidth = width - scaleX(200);
       float choiceHeight = scaleY(45);
       float choiceX = scaleX(100);
-      
       noStroke();
       if (choiceHover[i]) {
         fill(engineSettings.choiceHoverColor);
@@ -2117,12 +2093,10 @@ class DialogueSystem {
       fill(80, 80, 120, 200);
       float circleSize = scaleSize(22);
       ellipse(choiceX + scaleX(25), y + choiceHeight/2, circleSize, circleSize);
-      
       fill(255);
       textAlign(CENTER);
       setResponsiveTextSize(12);
       text(i + 1, choiceX + scaleX(25), y + choiceHeight/2 + scaleY(5));
-      
       fill(255);
       textAlign(LEFT);
       setResponsiveTextSize(14);
@@ -2152,7 +2126,6 @@ class DialogueSystem {
     float buttonWidth = scaleX(80);
     float buttonHeight = scaleY(25);
     float spacing = scaleY(30);
-    
     if (x >= buttonX && x <= buttonX + buttonWidth) {
       for (int i = 0; i < 4; i++) {
         float buttonY = scaleY(20) + i * spacing;
@@ -2212,16 +2185,13 @@ class DialogueSystem {
     float menuHeight = scaleY(400);
     float menuX = (width - menuWidth) / 2;
     float menuY = (height - menuHeight) / 2;
-    
     if (audioManager != null) {
       audioManager.playSFX("menu_click");
     }
-    
     if (x < menuX || x > menuX + menuWidth || y < menuY || y > menuY + menuHeight) {
       showingMenu = false;
       return;
     }
-    
     for (int i = 0; i < 7; i++) {
       float itemY = menuY + scaleY(80 + i * 45);
       if (x >= menuX + scaleX(20) && x <= menuX + menuWidth - scaleX(20) &&
@@ -2331,11 +2301,9 @@ class DialogueSystem {
   // 響應式文字換行
   String wrapText(String text, int maxWidth) {
     if (text == null || text.isEmpty()) return "";
-    
     String[] chars = text.split("");
     String result = "";
     String currentLine = "";
-    
     for (String ch : chars) {
       String testLine = currentLine + ch;
       if (textWidth(testLine) > maxWidth && currentLine.length() > 0) {
@@ -2368,7 +2336,7 @@ class DialogueSystem {
   }
   
   void scriptSetAutoPlayDelay(int delay) {
-    autoPlayDelay = max(delay, 500); // 最少0.5秒
+    autoPlayDelay = max(delay, 1000);
   }
   
   void scriptEnableScreenEffects(boolean enable) {
@@ -2376,7 +2344,7 @@ class DialogueSystem {
   }
   
   void scriptSetMaxHistoryItems(int maxItems) {
-    engineSettings.maxHistoryItems = max(maxItems, 10); // 最少10項
+    engineSettings.maxHistoryItems = max(maxItems, 10); 
   }
   
   // 獲取引擎狀態
@@ -2424,6 +2392,10 @@ class SaveSystem {
   String[] tabNames = {"存檔", "讀檔"};
   int currentTab = 0;
   
+  // 遊戲狀態檢查
+  boolean isGameRunning = false;
+  boolean canSave = false;
+  
   // 響應式設計基準值
   float baseWidth = 1280;
   float baseHeight = 720;
@@ -2465,6 +2437,21 @@ class SaveSystem {
     lastWindowWidth = width;
     lastWindowHeight = height;
     println("存檔系統初始化完成");
+  }
+  
+  // 檢查遊戲狀態
+  void updateGameState() {
+    isGameRunning = (currentMode == GameMode.GAME);
+    canSave = isGameRunning && 
+              dialogueSystem != null && 
+              dialogueSystem.currentNodeId != null && 
+              !dialogueSystem.currentNodeId.isEmpty() &&
+              gameState != null;
+    if (!isGameRunning && showingSaveMenu && currentTab == 0) {
+      currentTab = 1;
+      selectedSlot = -1;
+      println("檢測到從標題頁面進入，自動切換到讀檔模式");
+    }
   }
   
   void checkWindowSizeChange() {
@@ -2509,6 +2496,8 @@ class SaveSystem {
             " 槽位" + (int)slotWidth + "x" + (int)slotHeight +
             " 內容區域:" + (int)contentWidth + "x" + (int)contentHeight);
   }
+  
+  // 響應式設計方法
   float getScaleX() {
     return width / baseWidth;
   }
@@ -2530,6 +2519,8 @@ class SaveSystem {
   void setResponsiveTextSize(float baseSize) {
     textSize(scaleSize(baseSize));
   }
+  
+  // 智能文字換行方法
   String smartWrapText(String text, float maxWidth, float fontSize, int maxLines) {
     if (text == null || text.isEmpty()) return "";
     setResponsiveTextSize(fontSize);
@@ -2631,6 +2622,7 @@ class SaveSystem {
     
     return words.toArray(new String[0]);
   }
+  
   boolean isCJKCharacter(char c) {
     return (c >= 0x4E00 && c <= 0x9FFF) ||
            (c >= 0x3400 && c <= 0x4DBF) ||
@@ -2638,6 +2630,7 @@ class SaveSystem {
            (c >= 0x30A0 && c <= 0x30FF) ||
            (c >= 0xAC00 && c <= 0xD7AF);
   }
+  
   String forceBreakLongWord(String word, float maxWidth, ArrayList<String> lines) {
     if (textWidth(word) <= maxWidth) {
       return word;
@@ -2660,14 +2653,23 @@ class SaveSystem {
   }
   
   void showSaveMenu(boolean saving) {
+    updateGameState(); 
     showingSaveMenu = true;
-    currentTab = saving ? 0 : 1;
+    if (saving && canSave) {
+      currentTab = 0; 
+    } else if (saving && !canSave) {
+      currentTab = 1; 
+      println("⚠ 當前無法存檔，自動切換到讀檔模式");
+    } else {
+      currentTab = 1; 
+    }
     selectedSlot = -1;
     updateUILayout();
   }
   
   void display() {
     if (!showingSaveMenu) return;
+    updateGameState();
     checkWindowSizeChange();
     updateAnimations();
     fill(0, 0, 0, menuAlpha * 0.7);
@@ -2678,6 +2680,36 @@ class SaveSystem {
     drawPageButtons();
     drawCloseButton();
     drawActionButtons();
+    if (!canSave && currentTab == 0) {
+      drawNoGameStateWarning();
+    }
+  }
+  
+  // 繪製無遊戲狀態警告
+  void drawNoGameStateWarning() {
+    float warningWidth = scaleX(400);
+    float warningHeight = scaleY(120);
+    float warningX = (width - warningWidth) / 2;
+    float warningY = panelY + panelHeight/2 - warningHeight/2;
+    fill(0, 0, 0, menuAlpha * 0.8);
+    rect(warningX, warningY, warningWidth, warningHeight, scaleSize(10));
+    stroke(255, 200, 100, menuAlpha);
+    strokeWeight(scaleSize(2));
+    noFill();
+    rect(warningX, warningY, warningWidth, warningHeight, scaleSize(10));
+    noStroke();
+    fill(255, 200, 100, menuAlpha);
+    textAlign(CENTER, CENTER);
+    setResponsiveTextSize(24);
+    text("⚠", warningX + warningWidth/2, warningY + scaleY(30));
+    fill(255, 255, 255, menuAlpha);
+    setResponsiveTextSize(14);
+    text("無遊戲狀態", warningX + warningWidth/2, warningY + scaleY(60));
+    setResponsiveTextSize(12);
+    text("請先開始遊戲後再進行存檔", warningX + warningWidth/2, warningY + scaleY(80));
+    fill(200, 200, 200, menuAlpha * 0.8);
+    setResponsiveTextSize(10);
+    text("點擊上方「讀檔」頁面載入存檔", warningX + warningWidth/2, warningY + scaleY(100));
   }
   
   void updateAnimations() {
@@ -2728,22 +2760,15 @@ class SaveSystem {
   }
   
   void drawMainPanel() {
-    // 陰影
     fill(0, 0, 0, menuAlpha * 0.3);
     rect(panelX + 4, panelY + 4, panelWidth, panelHeight, scaleSize(15));
-    
-    // 面板背景
     fill(35, 40, 55, menuAlpha);
     rect(panelX, panelY, panelWidth, panelHeight, scaleSize(15));
-    
-    // 面板邊框
     stroke(120, 140, 180, menuAlpha * 0.8);
     strokeWeight(scaleSize(2));
     noFill();
     rect(panelX, panelY, panelWidth, panelHeight, scaleSize(15));
     noStroke();
-    
-    // 標題
     fill(255, 220, 100, menuAlpha);
     textAlign(CENTER);
     setResponsiveTextSize(24);
@@ -2767,13 +2792,15 @@ class SaveSystem {
     float tabWidth = panelWidth / tabNames.length;
     float tabHeight = scaleY(32);
     float tabY = panelY + scaleY(70);
-    
     for (int i = 0; i < tabNames.length; i++) {
       float tabX = panelX + i * tabWidth;
       boolean isActive = (i == currentTab);
       boolean isHovered = mouseX >= tabX && mouseX <= tabX + tabWidth && 
                          mouseY >= tabY && mouseY <= tabY + tabHeight;
-      if (isActive) {
+      boolean isDisabled = (i == 0) && !canSave;
+      if (isDisabled) {
+        fill(20, 25, 35, menuAlpha * 0.5);
+      } else if (isActive) {
         fill(70, 110, 190, menuAlpha);
       } else if (isHovered) {
         fill(60, 80, 120, menuAlpha * 0.7);
@@ -2781,7 +2808,10 @@ class SaveSystem {
         fill(30, 35, 50, menuAlpha * 0.5);
       }
       rect(tabX, tabY, tabWidth, tabHeight, scaleSize(6));
-      if (isActive) {
+      if (isDisabled) {
+        stroke(60, 70, 90, menuAlpha * 0.4);
+        strokeWeight(scaleSize(1));
+      } else if (isActive) {
         stroke(150, 200, 255, menuAlpha);
         strokeWeight(scaleSize(2));
       } else {
@@ -2791,7 +2821,9 @@ class SaveSystem {
       noFill();
       rect(tabX, tabY, tabWidth, tabHeight, scaleSize(6));
       noStroke();
-      if (isActive) {
+      if (isDisabled) {
+        fill(100, 110, 130, menuAlpha * 0.6);
+      } else if (isActive) {
         fill(255, 255, 255, menuAlpha);
       } else if (isHovered) {
         fill(200, 220, 255, menuAlpha);
@@ -2800,7 +2832,12 @@ class SaveSystem {
       }
       textAlign(CENTER, CENTER);
       setResponsiveTextSize(14);
-      text(tabNames[i], tabX + tabWidth/2, tabY + tabHeight/2);
+      
+      String tabText = tabNames[i];
+      if (isDisabled) {
+        setResponsiveTextSize(11);
+      }
+      text(tabText, tabX + tabWidth/2, tabY + tabHeight/2);
     }
   }
   
@@ -2867,9 +2904,10 @@ class SaveSystem {
   void drawSaveSlot(int slotIndex, float x, float y, float w, float h, boolean isHovered, boolean isSelected) {
     JSONObject saveData = (slotIndex < saveSlots.size()) ? saveSlots.getJSONObject(slotIndex) : null;
     boolean isEmpty = (saveData == null || !saveData.hasKey("nodeId"));
-    
-    // 存檔槽背景
-    if (isSelected) {
+    boolean isDisabledForSave = (currentTab == 0) && !canSave;
+    if (isDisabledForSave) {
+      fill(25, 30, 40, menuAlpha * 0.4);
+    } else if (isSelected) {
       fill(90, 140, 245, menuAlpha);
     } else if (isHovered) {
       fill(60, 80, 140, menuAlpha * 0.8);
@@ -2877,9 +2915,10 @@ class SaveSystem {
       fill(35, 45, 75, menuAlpha * 0.6);
     }
     rect(x, y, w, h, scaleSize(6));
-    
-    // 邊框
-    if (isSelected) {
+    if (isDisabledForSave) {
+      stroke(60, 70, 90, menuAlpha * 0.4);
+      strokeWeight(scaleSize(1));
+    } else if (isSelected) {
       stroke(200, 220, 255, menuAlpha);
       strokeWeight(scaleSize(2));
     } else if (isHovered) {
@@ -2892,29 +2931,24 @@ class SaveSystem {
     noFill();
     rect(x, y, w, h, scaleSize(6));
     noStroke();
-    
-    // 存檔槽編號
-    fill(255, 255, 255, menuAlpha);
+    if (isDisabledForSave) {
+      fill(120, 130, 150, menuAlpha * 0.6);
+    } else {
+      fill(255, 255, 255, menuAlpha);
+    }
     textAlign(LEFT);
     setResponsiveTextSize(12);
     text("存檔 " + (slotIndex + 1), x + scaleX(8), y + scaleY(15));
     
-    if (!isEmpty) {
+    if (isDisabledForSave) {
+      fill(150, 150, 150, menuAlpha * 0.8);
+      textAlign(CENTER, CENTER);
+      setResponsiveTextSize(14);
+      text("需要遊戲狀態", x + w/2, y + h/2);
+    } else if (!isEmpty) {
       drawSaveSlotContent(saveData, slotIndex, x, y, w, h, menuAlpha);
     } else {
       drawEmptySlot(x, y, w, h, menuAlpha);
-    }
-    
-    // 選中指示器
-    if (isSelected) {
-      float indicatorSize = scaleSize(10);
-      fill(255, 255, 100, menuAlpha);
-      ellipse(x + w - scaleX(12), y + scaleY(12), indicatorSize, indicatorSize);
-      
-      fill(0, menuAlpha);
-      textAlign(CENTER, CENTER);
-      setResponsiveTextSize(8);
-      text("✓", x + w - scaleX(12), y + scaleY(12));
     }
   }
   
@@ -2979,7 +3013,7 @@ class SaveSystem {
     if (infoY < maxInfoY && saveData.hasKey("dialogueText")) {
       String dialogueText = saveData.getString("dialogueText");
       float remainingHeight = maxInfoY - infoY;
-      int maxLines = max(2, (int)(remainingHeight / scaleY(12))); // 至少2行
+      int maxLines = max(2, (int)(remainingHeight / scaleY(12)));
       String wrappedDialogue = smartWrapText(dialogueText, w - scaleX(16), 8, maxLines);
       fill(220, 220, 220, alpha);
       textAlign(LEFT);
@@ -2987,7 +3021,7 @@ class SaveSystem {
       text(wrappedDialogue, x + scaleX(8), infoY);
     }
     
-    // 場景信息 - 放在右上角
+    // 場景信息
     if (saveData.hasKey("scene")) {
       String sceneName = saveData.getString("scene");
       if (dialogueSystem != null) {
@@ -3037,10 +3071,14 @@ class SaveSystem {
     textAlign(CENTER, CENTER);
     setResponsiveTextSize(14);
     text("空存檔位", x + w/2, y + h/2 - scaleY(10));
-    if (currentTab == 0) {
+    if (currentTab == 0 && canSave) {
       fill(100, 150, 100, alpha);
       setResponsiveTextSize(10);
       text("點擊存檔", x + w/2, y + h/2 + scaleY(15));
+    } else if (currentTab == 0 && !canSave) {
+      fill(150, 100, 100, alpha);
+      setResponsiveTextSize(10);
+      text("需要遊戲狀態", x + w/2, y + h/2 + scaleY(15));
     } else {
       fill(150, 100, 100, alpha);
       setResponsiveTextSize(10);
@@ -3074,28 +3112,24 @@ class SaveSystem {
     float buttonHeight = scaleY(35);
     JSONObject saveData = (selectedSlot < saveSlots.size()) ? saveSlots.getJSONObject(selectedSlot) : null;
     boolean isEmpty = (saveData == null || !saveData.hasKey("nodeId"));
-    if (currentTab == 0) {
+    if (currentTab == 0 && canSave) {
       float saveButtonX = panelX + (panelWidth - buttonWidth) / 2;
       boolean saveHovered = mouseX >= saveButtonX && mouseX <= saveButtonX + buttonWidth &&
                           mouseY >= actionButtonAreaY && mouseY <= actionButtonAreaY + buttonHeight;
       
       drawActionButton("存檔", saveButtonX, actionButtonAreaY, buttonWidth, buttonHeight, saveHovered, color(100, 150, 100));
-    } else {
-      if (!isEmpty) {
-        float buttonSpacing = scaleX(20);
-        float totalButtonWidth = buttonWidth * 2 + buttonSpacing;
-        float buttonsStartX = panelX + (panelWidth - totalButtonWidth) / 2;
-        
-        float loadButtonX = buttonsStartX;
-        float deleteButtonX = buttonsStartX + buttonWidth + buttonSpacing;
-        
-        boolean loadHovered = mouseX >= loadButtonX && mouseX <= loadButtonX + buttonWidth &&
+    } else if (currentTab == 1 && !isEmpty) {
+      float buttonSpacing = scaleX(20);
+      float totalButtonWidth = buttonWidth * 2 + buttonSpacing;
+      float buttonsStartX = panelX + (panelWidth - totalButtonWidth) / 2;
+      float loadButtonX = buttonsStartX;
+      float deleteButtonX = buttonsStartX + buttonWidth + buttonSpacing;
+      boolean loadHovered = mouseX >= loadButtonX && mouseX <= loadButtonX + buttonWidth &&
+                          mouseY >= actionButtonAreaY && mouseY <= actionButtonAreaY + buttonHeight;
+      boolean deleteHovered = mouseX >= deleteButtonX && mouseX <= deleteButtonX + buttonWidth &&
                             mouseY >= actionButtonAreaY && mouseY <= actionButtonAreaY + buttonHeight;
-        boolean deleteHovered = mouseX >= deleteButtonX && mouseX <= deleteButtonX + buttonWidth &&
-                              mouseY >= actionButtonAreaY && mouseY <= actionButtonAreaY + buttonHeight;
-        drawActionButton("讀檔", loadButtonX, actionButtonAreaY, buttonWidth, buttonHeight, loadHovered, color(100, 100, 150));
-        drawActionButton("刪除", deleteButtonX, actionButtonAreaY, buttonWidth, buttonHeight, deleteHovered, color(150, 100, 100));
-      }
+      drawActionButton("讀檔", loadButtonX, actionButtonAreaY, buttonWidth, buttonHeight, loadHovered, color(100, 100, 150));
+      drawActionButton("刪除", deleteButtonX, actionButtonAreaY, buttonWidth, buttonHeight, deleteHovered, color(150, 100, 100));
     }
   }
   
@@ -3121,6 +3155,7 @@ class SaveSystem {
   
   // 點擊處理邏輯
   void handleClick(int x, int y) {
+    updateGameState();
     updateUILayout();
     float closeButtonSize = scaleSize(30);
     float closeButtonX = panelX + panelWidth - scaleX(25);
@@ -3138,6 +3173,13 @@ class SaveSystem {
     for (int i = 0; i < tabNames.length; i++) {
       float tabX = panelX + i * tabWidth;
       if (x >= tabX && x <= tabX + tabWidth && y >= tabY && y <= tabY + tabHeight) {
+        if (i == 0 && !canSave) {
+          if (audioManager != null) {
+            audioManager.playSFX("system_error");
+          }
+          println("⚠ 當前無法存檔，請先開始遊戲");
+          return;
+        }
         if (i != currentTab) {
           currentTab = i;
           selectedSlot = -1;
@@ -3148,8 +3190,6 @@ class SaveSystem {
         return;
       }
     }
-    
-    // 頁面按鈕點擊
     if (totalPages > 1) {
       float totalButtonWidth = totalPages * pageButtonWidth + (totalPages - 1) * pageButtonSpacing;
       float buttonsStartX = panelX + (panelWidth - totalButtonWidth) / 2;
@@ -3163,14 +3203,11 @@ class SaveSystem {
             if (audioManager != null) {
               audioManager.playSFX("menu_click");
             }
-            println("切換到第 " + (i + 1) + " 頁");
           }
           return;
         }
       }
     }
-    
-    // 存檔槽點擊
     float totalSlotsWidth = slotWidth * 3 + slotSpacingX * 2;
     float totalSlotsHeight = slotHeight * 2 + slotSpacingY * 1;
     float slotsStartX = panelX + (panelWidth - totalSlotsWidth) / 2;
@@ -3183,10 +3220,18 @@ class SaveSystem {
       float slotX = slotsStartX + col * (slotWidth + slotSpacingX);
       float slotY = slotsStartY + row * (slotHeight + slotSpacingY);
       if (x >= slotX && x <= slotX + slotWidth && y >= slotY && y <= slotY + slotHeight) {
+        if (currentTab == 0 && !canSave) {
+          if (audioManager != null) {
+            audioManager.playSFX("system_error");
+          }
+          println("⚠ 當前無法存檔，請先開始遊戲");
+          return;
+        }
         if (selectedSlot == globalSlotIndex) {
-          if (currentTab == 0) {
+          if (currentTab == 0 && canSave) {
             saveGame(globalSlotIndex);
-          } else {
+            showingSaveMenu = false;
+          } else if (currentTab == 1) {
             JSONObject saveData = (globalSlotIndex < saveSlots.size()) ? saveSlots.getJSONObject(globalSlotIndex) : null;
             boolean isEmpty = (saveData == null || !saveData.hasKey("nodeId"));
             if (!isEmpty) {
@@ -3194,9 +3239,9 @@ class SaveSystem {
               if (currentMode == GameMode.LOAD_GAME) {
                 currentMode = GameMode.GAME;
               }
+              showingSaveMenu = false;
             }
           }
-          showingSaveMenu = false;
         } else {
           selectedSlot = globalSlotIndex;
           if (audioManager != null) {
@@ -3211,20 +3256,17 @@ class SaveSystem {
       float buttonHeight = scaleY(35);
       JSONObject saveData = (selectedSlot < saveSlots.size()) ? saveSlots.getJSONObject(selectedSlot) : null;
       boolean isEmpty = (saveData == null || !saveData.hasKey("nodeId"));
-      if (currentTab == 0) {
-        // 存檔按鈕
+      if (currentTab == 0 && canSave) {
         float saveButtonX = panelX + (panelWidth - buttonWidth) / 2;
         if (x >= saveButtonX && x <= saveButtonX + buttonWidth &&
             y >= actionButtonAreaY && y <= actionButtonAreaY + buttonHeight) {
           saveGame(selectedSlot);
           showingSaveMenu = false;
         }
-      } else if (!isEmpty) {
+      } else if (currentTab == 1 && !isEmpty) {
         float buttonSpacing = scaleX(20);
         float totalButtonWidth = buttonWidth * 2 + buttonSpacing;
         float buttonsStartX = panelX + (panelWidth - totalButtonWidth) / 2;
-        
-        // 讀檔按鈕
         float loadButtonX = buttonsStartX;
         if (x >= loadButtonX && x <= loadButtonX + buttonWidth &&
             y >= actionButtonAreaY && y <= actionButtonAreaY + buttonHeight) {
@@ -3234,8 +3276,6 @@ class SaveSystem {
           }
           showingSaveMenu = false;
         }
-        
-        // 刪除按鈕
         float deleteButtonX = buttonsStartX + buttonWidth + buttonSpacing;
         if (x >= deleteButtonX && x <= deleteButtonX + buttonWidth &&
             y >= actionButtonAreaY && y <= actionButtonAreaY + buttonHeight) {
@@ -3245,84 +3285,169 @@ class SaveSystem {
     }
   }
   
-  // 存檔操作方法
   void saveGame(int slot) {
-    JSONObject saveData = new JSONObject();
-    saveData.setString("nodeId", dialogueSystem.currentNodeId);
-    saveData.setInt("chapter", gameState.currentChapter);
-    saveData.setString("chapterName", gameState.currentChapterName);
-    saveData.setString("scene", backgroundManager.currentBackground);
-    java.util.Date now = new java.util.Date();
-    saveData.setString("date", timeFormat.format(now));
-    saveData.setLong("timestamp", now.getTime());
-    if (dialogueSystem.currentNode != null) {
-      String dialogueText = "";
-      if (dialogueSystem.currentNode.speaker != null) {
-        dialogueText += dialogueSystem.currentNode.speaker + "：";
+    updateGameState();
+    if (!canSave) {
+      println("⚠ 嘗試存檔但遊戲狀態無效");
+      if (audioManager != null) {
+        audioManager.playSFX("system_error");
       }
-      if (dialogueSystem.currentNode.text != null) {
-        dialogueText += dialogueSystem.currentNode.text;
+      return;
+    }
+    
+    if (dialogueSystem == null || dialogueSystem.currentNodeId == null || dialogueSystem.currentNodeId.isEmpty()) {
+      println("⚠ 對話系統狀態無效，無法存檔");
+      if (audioManager != null) {
+        audioManager.playSFX("system_error");
       }
-      saveData.setString("dialogueText", dialogueText);
+      return;
     }
-    if (characterManager != null) {
-      JSONArray characters = new JSONArray();
-      for (String charName : characterManager.getActiveCharacters()) {
-        JSONObject charData = new JSONObject();
-        charData.setString("name", charName);
-        charData.setString("position", characterManager.getCharacterPosition(charName));
-        charData.setString("emotion", characterManager.getCharacterEmotion(charName));
-        characters.append(charData);
+    
+    if (gameState == null) {
+      println("⚠ 遊戲狀態為空，無法存檔");
+      if (audioManager != null) {
+        audioManager.playSFX("system_error");
       }
-      saveData.setJSONArray("characters", characters);
+      return;
     }
-    while (saveSlots.size() <= slot) {
-      saveSlots.append(new JSONObject());
+    
+    try {
+      JSONObject saveData = new JSONObject();
+      saveData.setString("nodeId", dialogueSystem.currentNodeId);
+      saveData.setInt("chapter", gameState.currentChapter);
+      saveData.setString("chapterName", gameState.currentChapterName);
+      saveData.setString("scene", backgroundManager.currentBackground);
+      java.util.Date now = new java.util.Date();
+      saveData.setString("date", timeFormat.format(now));
+      saveData.setLong("timestamp", now.getTime());
+      saveData.setInt("windowWidth", width);
+      saveData.setInt("windowHeight", height);
+      if (dialogueSystem.currentNode != null) {
+        String dialogueText = "";
+        if (dialogueSystem.currentNode.speaker != null) {
+          dialogueText += dialogueSystem.currentNode.speaker + "：";
+        }
+        if (dialogueSystem.currentNode.text != null) {
+          dialogueText += dialogueSystem.currentNode.text;
+        }
+        saveData.setString("dialogueText", dialogueText);
+      }
+      if (characterManager != null) {
+        JSONArray characters = new JSONArray();
+        for (String charName : characterManager.getActiveCharacters()) {
+          JSONObject charData = new JSONObject();
+          charData.setString("name", charName);
+          charData.setString("position", characterManager.getCharacterPosition(charName));
+          charData.setString("emotion", characterManager.getCharacterEmotion(charName));
+          CharacterManager.CharacterDisplay charDisplay = characterManager.activeCharacters.get(charName);
+          if (charDisplay != null) {
+            charData.setFloat("alpha", charDisplay.alpha);
+            charData.setFloat("targetAlpha", charDisplay.targetAlpha);
+            charData.setFloat("scale", charDisplay.scale);
+            charData.setFloat("targetScale", charDisplay.targetScale);
+            charData.setBoolean("isActive", charDisplay.isActive);
+            charData.setFloat("baseY", charDisplay.baseY);
+            charData.setFloat("targetX", charDisplay.targetX);
+            charData.setFloat("targetY", charDisplay.targetY);
+          }
+          characters.append(charData);
+        }
+        saveData.setJSONArray("characters", characters);
+      }
+      while (saveSlots.size() <= slot) {
+        saveSlots.append(new JSONObject());
+      }
+      saveSlots.setJSONObject(slot, saveData);
+      saveScreenshot(slot);
+      saveJSONArray(saveSlots, "data/saves.json");
+      if (audioManager != null) {
+        audioManager.playSFX("save_complete");
+      }
+      println("遊戲已成功存檔到槽位 " + (slot + 1));
+    } catch (Exception e) {
+      println("存檔過程中發生錯誤: " + e.getMessage());
+      e.printStackTrace();
+      if (audioManager != null) {
+        audioManager.playSFX("system_error");
+      }
     }
-    saveSlots.setJSONObject(slot, saveData);
-    saveScreenshot(slot);
-    saveJSONArray(saveSlots, "data/saves.json");
-    if (audioManager != null) {
-      audioManager.playSFX("save_complete");
-    }
-    println("遊戲已存檔到槽位 " + (slot + 1));
   }
   
   void loadGame(int slot) {
     if (slot < saveSlots.size()) {
       JSONObject saveData = saveSlots.getJSONObject(slot);
       if (saveData != null && saveData.hasKey("nodeId")) {
-        dialogueSystem.currentNodeId = saveData.getString("nodeId");
-        dialogueSystem.currentNode = null;
-        gameState.currentChapter = saveData.getInt("chapter");
-        gameState.currentChapterName = saveData.getString("chapterName");
-        dialogueSystem.showingChoices = false;
-        dialogueSystem.showingMenu = false;
-        dialogueSystem.textDisplayIndex = 0;
-        dialogueSystem.textComplete = false;
-        String sceneName = saveData.getString("scene");
-        if (sceneName != null && !sceneName.isEmpty()) {
-          backgroundManager.setBackground(sceneName);
-        }
-        characterManager.clearAllCharacters();
-        if (saveData.hasKey("characters")) {
-          JSONArray characters = saveData.getJSONArray("characters");
-          for (int i = 0; i < characters.size(); i++) {
-            JSONObject charData = characters.getJSONObject(i);
-            String charName = charData.getString("name");
-            String position = charData.getString("position");
-            String emotion = charData.getString("emotion");
-            characterManager.addCharacter(charName, position, emotion);
+        try {
+          currentMode = GameMode.GAME;
+          dialogueSystem.currentNodeId = saveData.getString("nodeId");
+          dialogueSystem.currentNode = null;
+          gameState.currentChapter = saveData.getInt("chapter");
+          gameState.currentChapterName = saveData.getString("chapterName");
+          dialogueSystem.showingChoices = false;
+          dialogueSystem.showingMenu = false;
+          dialogueSystem.textDisplayIndex = 0;
+          dialogueSystem.textComplete = false;
+          if (characterManager != null) {
+            characterManager.activeCharacters.clear();
+            characterManager.clearAllCharacters();
+          }
+          String sceneName = saveData.getString("scene", "default");
+          if (backgroundManager != null) {
+            backgroundManager.setBackground(sceneName);
+          }
+          if (saveData.hasKey("characters") && characterManager != null) {
+            JSONArray characters = saveData.getJSONArray("characters");
+            characterManager.updateAllCharacterPositions();
+            for (int i = 0; i < characters.size(); i++) {
+              JSONObject charData = characters.getJSONObject(i);
+              String charName = charData.getString("name");
+              String position = charData.getString("position");
+              String emotion = charData.getString("emotion");
+              characterManager.addCharacter(charName, position, emotion);
+              if (characterManager.activeCharacters.containsKey(charName)) {
+                CharacterManager.CharacterDisplay charDisplay = characterManager.activeCharacters.get(charName);
+                if (charData.hasKey("alpha")) {
+                  charDisplay.alpha = charData.getFloat("alpha");
+                  charDisplay.targetAlpha = charData.getFloat("targetAlpha", charDisplay.alpha);
+                }
+                if (charData.hasKey("scale")) {
+                  charDisplay.scale = charData.getFloat("scale");
+                  charDisplay.targetScale = charData.getFloat("targetScale", charDisplay.scale);
+                }
+                if (charData.hasKey("isActive")) {
+                  charDisplay.isActive = charData.getBoolean("isActive");
+                }
+                charDisplay.calculatePosition();
+                charDisplay.baseY = height * 1.35;
+                charDisplay.targetY = charDisplay.baseY;
+                charDisplay.currentX = charDisplay.targetX;
+                charDisplay.currentY = charDisplay.targetY;
+                println("✓ 恢復角色: " + charName + " 位置: " + position + " 情感: " + emotion);
+              }
+            }
+          }
+          if (dialogueSystem.currentNode == null && dialogueSystem.nodes.containsKey(dialogueSystem.currentNodeId)) {
+            dialogueSystem.currentNode = dialogueSystem.nodes.get(dialogueSystem.currentNodeId);
+            dialogueSystem.updateScene();
+            dialogueSystem.resetTextDisplay();
+          }
+          if (audioManager != null) {
+            audioManager.playSFX("load_complete");
+          }
+          println("遊戲已成功讀取槽位 " + (slot + 1));
+          uiNeedsUpdate = true;
+          dialogueNeedsUpdate = true;
+        } catch (Exception e) {
+          println("讀檔時發生錯誤: " + e.getMessage());
+          e.printStackTrace();
+          if (audioManager != null) {
+            audioManager.playSFX("system_error");
           }
         }
-        if (audioManager != null) {
-          audioManager.playSFX("load_complete");
-        }
-        println("遊戲已讀取槽位 " + (slot + 1));
       } else {
         println("⚠ 存檔槽位 " + (slot + 1) + " 沒有有效資料");
         if (audioManager != null) {
-          audioManager.playSFX("error");
+          audioManager.playSFX("system_error");
         }
       }
     }
@@ -3330,24 +3455,28 @@ class SaveSystem {
   
   void deleteGame(int slot) {
     if (slot < saveSlots.size()) {
-      saveSlots.setJSONObject(slot, new JSONObject());
-      if (saveScreenshots.containsKey(slot)) {
-        saveScreenshots.remove(slot);
-      }
       try {
+        saveSlots.setJSONObject(slot, new JSONObject());
+        if (saveScreenshots.containsKey(slot)) {
+          saveScreenshots.remove(slot);
+        }
         File screenshotFile = new File(sketchPath("data/screenshots/save_" + slot + ".png"));
         if (screenshotFile.exists()) {
           screenshotFile.delete();
         }
+        saveJSONArray(saveSlots, "data/saves.json");
+        selectedSlot = -1;
+        if (audioManager != null) {
+          audioManager.playSFX("delete_complete");
+        }
+        println("已刪除存檔槽位 " + (slot + 1));
       } catch (Exception e) {
-        println("刪除縮圖檔案失敗: " + e.getMessage());
+        println("刪除存檔時發生錯誤: " + e.getMessage());
+        e.printStackTrace();
+        if (audioManager != null) {
+          audioManager.playSFX("system_error");
+        }
       }
-      saveJSONArray(saveSlots, "data/saves.json");
-      selectedSlot = -1;
-      if (audioManager != null) {
-        audioManager.playSFX("delete_complete");
-      }
-      println("已刪除存檔槽位 " + (slot + 1));
     }
   }
   
@@ -3390,7 +3519,7 @@ class SaveSystem {
     ArrayList<CharacterManager.CharacterDisplay> rightChars = new ArrayList<CharacterManager.CharacterDisplay>();
     ArrayList<CharacterManager.CharacterDisplay> otherChars = new ArrayList<CharacterManager.CharacterDisplay>();
     for (CharacterManager.CharacterDisplay charDisplay : characterManager.activeCharacters.values()) {
-      if (charDisplay.alpha < 10) continue; // 跳過透明角色
+      if (charDisplay.alpha < 10) continue; 
       switch(charDisplay.position) {
         case "left":
         case "far_left":
@@ -3451,6 +3580,7 @@ class SaveSystem {
       println("繪製角色到截圖時發生錯誤: " + charDisplay.character + " - " + e.getMessage());
     }
   }
+  
   float calculateCharacterXForScreenshotFixed(String position) {
     switch(position) {
       case "left":
@@ -5747,6 +5877,32 @@ class CharacterManager {
     return false;
   }
 
+  // 專門的恢復方法
+  void restoreCharacterFromSave(String character, String position, String emotion, JSONObject charData) {
+    addCharacter(character, position, emotion);
+    if (charData != null && activeCharacters.containsKey(character)) {
+      CharacterManager.CharacterDisplay charDisplay = activeCharacters.get(character);
+      if (charData.hasKey("alpha")) {
+        charDisplay.alpha = charData.getFloat("alpha");
+        charDisplay.targetAlpha = charData.getFloat("targetAlpha", charDisplay.alpha);
+      }
+      if (charData.hasKey("scale")) {
+        charDisplay.scale = charData.getFloat("scale");
+        charDisplay.targetScale = charData.getFloat("targetScale", charDisplay.scale);
+      }
+      if (charData.hasKey("isActive")) {
+        charDisplay.isActive = charData.getBoolean("isActive");
+      }
+      charDisplay.calculatePosition();
+      charDisplay.baseY = height * 1.35; // 使用當前視窗高度
+      charDisplay.targetY = charDisplay.baseY;
+      charDisplay.currentX = charDisplay.targetX;
+      charDisplay.currentY = charDisplay.targetY;
+      charDisplay.isEntering = false;
+      println("✓ 完整恢復角色: " + character + " 基準Y: " + charDisplay.baseY);
+    }
+  }
+
   // 批量角色操作
   void updateCharacterEmotion(String character, String emotion) {
     if (character == null || emotion == null) return;
@@ -5850,8 +6006,10 @@ class CharacterManager {
     }
   }
 
+  // 重新設置基準Y位置，確保在窗口大小改變時正確更新
   void updateAllCharacterPositions() {
     for (CharacterDisplay charDisplay : activeCharacters.values()) {
+      charDisplay.baseY = height * 1.35;
       charDisplay.calculatePosition();
     }
   }
@@ -5880,7 +6038,7 @@ class CharacterManager {
     }
     return null;
   }
-  
+
   // 角色顯示類
   class CharacterDisplay {
     String character;
@@ -5909,6 +6067,7 @@ class CharacterManager {
     float emotionChangeAlpha = 0;
 
     color defaultColor;
+    float baseY;
     
     CharacterDisplay(String character, String position, String emotion) {
       this.character = (character != null && !character.trim().isEmpty()) ? character.trim() : "Unknown";
@@ -5923,9 +6082,11 @@ class CharacterManager {
       this.bobOffset = random(TWO_PI);
       this.defaultColor = generateCharacterColor(this.character);
       calculatePosition();
+      this.baseY = height * 1.35;
+      this.targetY = this.baseY;
       boolean isLeftPosition = this.position.equals("left") || this.position.equals("far_left");
       this.currentX = targetX + (isLeftPosition ? -100 : 100);
-      this.currentY = targetY + 50;
+      this.currentY = this.baseY + 50;
     }
     color generateCharacterColor(String characterName) {
       if (characterName == null || characterName.isEmpty()) {
@@ -5936,7 +6097,6 @@ class CharacterManager {
         hash = hash * 31 + characterName.charAt(i);
       }
       hash = abs(hash);
-      
       float hue = (hash % 360);
       colorMode(HSB, 360, 100, 100);
       color c = color(hue, 70, 85);
@@ -5949,6 +6109,7 @@ class CharacterManager {
         this.position = "center";
         println("⚠ 角色位置為null，設為預設位置 center: " + this.character);
       }
+      
       switch(this.position) {
         case "left":
           targetX = width * 0.25;
@@ -5967,11 +6128,15 @@ class CharacterManager {
           break;
         default:
           targetX = width * 0.5;
-          println("⚠ 未知的角色位置: " + this.position + "，使用預設位置 center");
+          println("⚠ 未知角色位置: " + this.position + "，使用預設位置 center");
           this.position = "center";
           break;
       }
-      targetY = height * 1.35;
+      if (baseY == 0 || abs(baseY - height * 1.35) > 50) {
+        baseY = height * 1.35;
+        println("重新設置角色 " + character + " 的基準Y位置: " + baseY);
+      }
+      targetY = baseY;
     }
     
     void updatePosition(String newPosition) {
@@ -5987,6 +6152,7 @@ class CharacterManager {
         println("角色 " + character + " 移動到位置: " + safeNewPosition);
       }
     }
+    
     void updateEmotion(String newEmotion) {
       if (newEmotion == null || newEmotion.trim().isEmpty()) {
         println("⚠ 新情感參數為空或null，忽略情感更新: " + this.character);
@@ -6025,7 +6191,7 @@ class CharacterManager {
       isExiting = true;
       targetAlpha = 0;
       targetScale = 0.8;
-      targetY += 50;
+      targetY = baseY + 50;
     }
     
     void playMoveAnimation() {
@@ -6045,54 +6211,59 @@ class CharacterManager {
       currentY = lerp(currentY, targetY, animationSpeed);
       alpha = lerp(alpha, targetAlpha, animationSpeed);
       scale = lerp(scale, targetScale, animationSpeed);
+      
       if (isActive) {
         y = currentY + sin(millis() * bobSpeed + bobOffset) * bobAmount;
       } else {
         y = currentY;
       }
       x = currentX;
+      
       if (emotionChangeAlpha > 0) {
         emotionChangeAlpha -= 0.02;
         if (emotionChangeAlpha <= 0) {
           emotionChangeAlpha = 0;
-          targetScale = isActive ? 1.02 : 0.98;
         }
       }
+      
       if (isExiting && alpha < 5) {
         shouldRemove = true;
       }
+      
       if (isEntering && abs(alpha - targetAlpha) < 5 && abs(scale - targetScale) < 0.05) {
         isEntering = false;
       }
     }
     
-  void display() {
-    PImage charImage = loadCharacterImageIfNeeded(character, emotion);
-    boolean matrixPushed = false;
-    try {
-      pushMatrix();
-      matrixPushed = true;
-      translate(x, y);
-      scale(scale);
-      float displayAlpha = alpha;
-      if (emotionChangeAlpha > 0) {
-        displayAlpha = min(255, alpha + emotionChangeAlpha * 100);
-      }
-      tint(255, displayAlpha);
-      if (charImage != null) {
-        displayCharacterImage(charImage);
-      } else {
-        drawFallbackCharacter();
-      }
-      noTint();
-    } catch (Exception e) {
-      println("角色顯示錯誤: " + character + " - " + e.getMessage());
-    } finally {
-      if (matrixPushed) {
-        popMatrix();
+    void display() {
+      PImage charImage = loadCharacterImageIfNeeded(character, emotion);
+      boolean matrixPushed = false;
+      try {
+        pushMatrix();
+        matrixPushed = true;
+        translate(x, y);
+        scale(scale);
+        
+        float displayAlpha = alpha;
+        if (emotionChangeAlpha > 0) {
+          displayAlpha = min(255, alpha + emotionChangeAlpha * 100);
+        }
+        tint(255, displayAlpha);
+        
+        if (charImage != null) {
+          displayCharacterImage(charImage);
+        } else {
+          drawFallbackCharacter();
+        }
+        noTint();
+      } catch (Exception e) {
+        println("角色顯示錯誤: " + character + " - " + e.getMessage());
+      } finally {
+        if (matrixPushed) {
+          popMatrix();
+        }
       }
     }
-  }
     
     void displayCharacterImage(PImage charImage) {
       imageMode(CENTER);
@@ -6100,10 +6271,12 @@ class CharacterManager {
       float sourceHeight = charImage.height;
       float displayHeight = height * 1.2;
       float displayWidth = (sourceWidth / sourceHeight) * displayHeight;
+      
       if (displayWidth > width * 1.2) {
         displayWidth = width * 1.2;
         displayHeight = (sourceHeight / sourceWidth) * displayWidth;
       }
+      
       image(charImage, 0, -displayHeight/2 + 50, displayWidth, displayHeight);
     }
     
@@ -6113,6 +6286,7 @@ class CharacterManager {
       fill(red(defaultColor), green(defaultColor), blue(defaultColor), alpha);
       rectMode(CENTER);
       rect(0, 0, 80, 200, 10);
+      
       fill(255, alpha);
       textAlign(CENTER);
       textSize(12);
@@ -6121,14 +6295,25 @@ class CharacterManager {
         textSize(10);
         text("(" + emotion + ")", 0, 135);
       }
+      
       if (keyPressed && key == 'd') {
         textSize(8);
         text(position, 0, 150);
         text("Alpha: " + int(alpha), 0, 165);
         text("Active: " + isActive, 0, 180);
+        text("BaseY: " + int(baseY), 0, 195);
       }
       noStroke();
       rectMode(CORNER);
+    }
+    void forcePositionSync() {
+      calculatePosition();
+      baseY = height * 1.35; 
+      targetY = baseY;
+      currentX = targetX;
+      currentY = targetY;
+      isEntering = false;
+      isExiting = false;
     }
   }
 }

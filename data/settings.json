@@ -1,8 +1,11 @@
 {
+  "windowedWidth": 1280,
   "voiceVolume": 0.8999999761581421,
   "masterVolume": 0.800000011920929,
   "fullscreen": false,
+  "selectedResolutionIndex": 1,
   "textSpeed": 2,
+  "windowedHeight": 720,
   "voiceAutoPlay": true,
   "musicVolume": 0.800000011920929,
   "sfxVolume": 0.800000011920929
