@@ -28,7 +28,6 @@ enum GameMode {
   SETTINGS,
   LOAD_GAME
 }
-
 GameMode currentMode = GameMode.LOGO;
 
 // 性能優化變數
@@ -462,11 +461,32 @@ void keyPressed() {
   }
 }
 
+void mouseWheel(MouseEvent event) {
+  if (dialogueSystem != null && dialogueSystem.historyManager != null) {
+    dialogueSystem.historyManager.handleMouseWheel(event);
+  }
+}
+
+void mouseDragged() {
+  if (dialogueSystem != null && dialogueSystem.historyManager != null) {
+    dialogueSystem.historyManager.handleMouseDragged();
+  }
+}
+
+void mouseReleased() {
+  if (dialogueSystem != null && dialogueSystem.historyManager != null) {
+    dialogueSystem.historyManager.handleMouseReleased();
+  }
+}
+
 // 開始新遊戲
 void startNewGame() {
   currentMode = GameMode.GAME;
   gameState = new GameState();
   backgroundManager.resetForNewGame();
+  if (dialogueSystem != null && dialogueSystem.historyManager != null) {
+    dialogueSystem.historyManager.resetForNewGame();
+  }
   String firstSceneBackground = getFirstSceneBackground();
   if (firstSceneBackground != null && !firstSceneBackground.equals("default")) {
     backgroundManager.preloadInitialBackground(firstSceneBackground);
@@ -505,6 +525,9 @@ String getFirstSceneBackground() {
 // 返回標題畫面
 void returnToTitle() {
   currentMode = GameMode.TITLE;
+  if (dialogueSystem != null && dialogueSystem.historyManager != null) {
+    dialogueSystem.historyManager.resetForTitle();
+  }
   if (audioManager != null) {
     audioManager.playBGM("title");
   }
@@ -628,25 +651,19 @@ class TitleScreen {
     if (gradientOverlay != null) {
       gradientOverlay.dispose();
     }
-    
     gradientOverlay = createGraphics(width, height);
     gradientOverlay.beginDraw();
     gradientOverlay.clear();
-    
-    // 上方漸層
     for (int i = 0; i < height/2; i++) {
       float alpha = map(i, 0, height/2, 80, 0);
       gradientOverlay.stroke(0, alpha);
       gradientOverlay.line(0, i, width, i);
     }
-    
-    // 下方漸層
     for (int i = height * 3/4; i < height; i++) {
       float alpha = map(i, height * 3/4, height, 0, 120);
       gradientOverlay.stroke(0, alpha);
       gradientOverlay.line(0, i, width, i);
     }
-    
     gradientOverlay.noStroke();
     gradientOverlay.endDraw();
     gradientOverlayCreated = true;
@@ -746,7 +763,6 @@ class TitleScreen {
       if (!buttonVisible[i]) continue;
       float x = width/2 - buttonWidth/2;
       float y = startY + i * (buttonHeight + buttonSpacing) + scaleY(buttonOffsetY[i]);
-      
       if (mouseX >= x && mouseX <= x + buttonWidth &&
           mouseY >= y && mouseY <= y + buttonHeight) {
         hoveredItem = i;
@@ -885,7 +901,7 @@ class TitleScreen {
     fill(150, 150, 150, titleAlpha * 0.6);
     textAlign(CENTER);
     setResponsiveTextSize(12);
-    text("© 2025 " + gameConfig.getGameAuthor() + ". All rights reserved.", 
+    text("© 2025 天野靜樹 All rights reserved.", 
          width/2, height - scaleY(20));
   }
   
@@ -1189,6 +1205,817 @@ class Choice {
   }
 }
 
+// 對話歷史管理器
+class DialogueHistoryManager {
+  ArrayList<DialogueHistoryEntry> historyEntries;
+  int maxHistoryItems = 100;
+  boolean showingHistory = false;
+  
+  // UI 相關
+  float historyAlpha = 0;
+  float targetHistoryAlpha = 0;
+  
+  // 響應式設計基準值
+  float baseWidth = 1280;
+  float baseHeight = 720;
+  
+  // 滾動相關
+  float scrollOffset = 0;
+  float targetScrollOffset = 0;
+  float maxScrollOffset = 0;
+  float scrollSpeed = 0.15;
+  float scrollStep = 30;
+  
+  // UI佈局緩存
+  float panelX, panelY, panelWidth, panelHeight;
+  float contentX, contentY, contentWidth, contentHeight;
+  float headerHeight, footerHeight;
+  
+  // 渲染緩存
+  boolean needsRerender = true;
+  ArrayList<RenderedHistoryEntry> renderedEntries;
+  
+  // 滾動條相關
+  float scrollBarWidth = 15;
+  boolean scrollBarVisible = false;
+  boolean isDraggingScrollBar = false;
+  float scrollBarY = 0;
+  float scrollBarHeight = 0;
+  float scrollBarX = 0;
+  
+  // 視窗尺寸追蹤
+  int lastWindowWidth = 0;
+  int lastWindowHeight = 0;
+  
+  // 防重複機制
+  ArrayList<String> addedEntries;
+  
+  // 遊戲狀態追蹤
+  String currentGameSession = "";
+  boolean isNewGameSession = true;
+  
+  // UI動畫控制
+  float[] entryAnimations;
+  boolean[] entryHovers;
+  float scrollBarAnimation = 0;
+  boolean isScrollBarHovered = false;
+  
+  // 搜索和過濾功能
+  String searchText = "";
+  boolean showingSearchBox = false;
+  ArrayList<Integer> filteredIndices;
+  
+  // 分頁功能
+  int entriesPerPage = 10;
+  int currentPage = 0;
+  int totalPages = 0;
+  boolean usePagination = false;
+  
+  DialogueHistoryManager() {
+    initializeHistory();
+  }
+  
+  // 初始化歷史記錄
+  void initializeHistory() {
+    historyEntries = new ArrayList<DialogueHistoryEntry>();
+    renderedEntries = new ArrayList<RenderedHistoryEntry>();
+    addedEntries = new ArrayList<String>();
+    filteredIndices = new ArrayList<Integer>();
+    showingHistory = false;
+    historyAlpha = 0;
+    targetHistoryAlpha = 0;
+    scrollOffset = 0;
+    targetScrollOffset = 0;
+    maxScrollOffset = 0;
+    needsRerender = true;
+    scrollBarVisible = false;
+    isDraggingScrollBar = false;
+    currentGameSession = generateSessionId();
+    isNewGameSession = true;
+    updateLayout();
+    lastWindowWidth = width;
+    lastWindowHeight = height;
+    println("對話歷史管理器初始化完成 - 會話ID: " + currentGameSession);
+  }
+  
+  // 生成新的遊戲會話ID
+  String generateSessionId() {
+    return "session_" + System.currentTimeMillis() + "_" + (int)random(1000, 9999);
+  }
+  
+  // 開始新遊戲會話
+  void startNewGameSession() {
+    clearAllHistory();
+    currentGameSession = generateSessionId();
+    isNewGameSession = true;
+    println("開始新遊戲會話 - 會話ID: " + currentGameSession);
+  }
+  
+  // 載入遊戲會話
+  void loadGameSession(String sessionId) {
+    clearAllHistory();
+    currentGameSession = (sessionId != null && !sessionId.isEmpty()) ? sessionId : generateSessionId();
+    isNewGameSession = false;
+    println("載入遊戲會話 - 會話ID: " + currentGameSession);
+  }
+  
+  // 清空所有歷史記錄
+  void clearAllHistory() {
+    historyEntries.clear();
+    renderedEntries.clear();
+    addedEntries.clear();
+    filteredIndices.clear();
+    showingHistory = false;
+    historyAlpha = 0;
+    targetHistoryAlpha = 0;
+    scrollOffset = 0;
+    targetScrollOffset = 0;
+    maxScrollOffset = 0;
+    needsRerender = true;
+    scrollBarVisible = false;
+    isDraggingScrollBar = false;
+    searchText = "";
+    currentPage = 0;
+    println("所有對話歷史已清空");
+  }
+  
+  // 重置歷史管理器（用於新遊戲）
+  void resetForNewGame() {
+    startNewGameSession();
+    updateLayout();
+    println("對話歷史管理器已重置為新遊戲狀態");
+  }
+  
+  // 重置歷史管理器（用於返回標題）
+  void resetForTitle() {
+    clearAllHistory();
+    currentGameSession = "";
+    isNewGameSession = true;
+    println("對話歷史管理器已重置為標題狀態");
+  }
+  
+  // 歷史條目類
+  class DialogueHistoryEntry {
+    String nodeId;
+    String speaker;
+    String text;
+    long timestamp;
+    String uniqueKey;
+    String sessionId;
+    
+    DialogueHistoryEntry(String nodeId, String speaker, String text) {
+      this.nodeId = (nodeId != null) ? nodeId : "";
+      this.speaker = (speaker != null) ? speaker : "";
+      this.text = (text != null) ? text : "";
+      this.timestamp = millis();
+      this.sessionId = currentGameSession;
+      this.uniqueKey = this.sessionId + "_" + this.nodeId + "_" + this.speaker + "_" + this.text.hashCode() + "_" + timestamp;
+    }
+    
+    // 從存檔數據創建歷史條目
+    DialogueHistoryEntry(String nodeId, String speaker, String text, String sessionId) {
+      this.nodeId = (nodeId != null) ? nodeId : "";
+      this.speaker = (speaker != null) ? speaker : "";
+      this.text = (text != null) ? text : "";
+      this.timestamp = millis();
+      this.sessionId = (sessionId != null) ? sessionId : currentGameSession;
+      this.uniqueKey = this.sessionId + "_" + this.nodeId + "_" + this.speaker + "_" + this.text.hashCode() + "_" + timestamp;
+    }
+
+    String getFormattedText() {
+      if (text == null || text.trim().isEmpty()) {
+        return "[空白對話]";
+      }
+      return text;
+    }
+    String toSaveFormat() {
+      return nodeId + "|" + speaker + "|" + text + "|" + sessionId;
+    }
+  }
+  
+  // 渲染條目類
+  class RenderedHistoryEntry {
+    String text;
+    ArrayList<String> wrappedLines;
+    float totalHeight;
+    float yPosition;
+    int originalIndex;
+    String speaker;
+    long timestamp;
+    
+    RenderedHistoryEntry(String text, int index, String speaker, long timestamp) {
+      this.text = (text != null) ? text : "[空白內容]";
+      this.originalIndex = index;
+      this.speaker = (speaker != null) ? speaker : "";
+      this.timestamp = timestamp;
+      this.wrappedLines = new ArrayList<String>();
+      wrapText();
+      calculateHeight();
+    }
+    
+    void wrapText() {
+      wrappedLines.clear();
+      if (text == null || text.isEmpty()) {
+        wrappedLines.add("[空白內容]");
+        return;
+      }
+      float maxLineWidth = contentWidth - scaleX(60);
+      String[] lines = text.split("\\n");
+      for (String line : lines) {
+        if (line.trim().isEmpty()) {
+          wrappedLines.add("");
+          continue;
+        }
+        ArrayList<String> lineWrapped = wrapSingleLine(line, maxLineWidth);
+        wrappedLines.addAll(lineWrapped);
+      }
+      if (wrappedLines.size() == 0) {
+        wrappedLines.add(text);
+      }
+    }
+    
+    ArrayList<String> wrapSingleLine(String line, float maxWidth) {
+      ArrayList<String> result = new ArrayList<String>();
+      if (line == null || line.isEmpty()) {
+        result.add("");
+        return result;
+      }
+      textSize(scaleSize(14));
+      if (textWidth(line) <= maxWidth) {
+        result.add(line);
+        return result;
+      }
+      ArrayList<String> words = splitIntoWords(line);
+      StringBuilder currentLine = new StringBuilder();
+      for (String word : words) {
+        String testLine = currentLine.toString() + word;
+        if (textWidth(testLine) > maxWidth && currentLine.length() > 0) {
+          result.add(currentLine.toString());
+          currentLine = new StringBuilder(word);
+        } else {
+          currentLine.append(word);
+        }
+      }
+      if (currentLine.length() > 0) {
+        result.add(currentLine.toString());
+      }
+      return result;
+    }
+    
+    ArrayList<String> splitIntoWords(String text) {
+      ArrayList<String> words = new ArrayList<String>();
+      StringBuilder currentWord = new StringBuilder();
+      for (int i = 0; i < text.length(); i++) {
+        char c = text.charAt(i);
+        if (Character.isWhitespace(c)) {
+          if (currentWord.length() > 0) {
+            words.add(currentWord.toString());
+            currentWord.setLength(0);
+          }
+          words.add(String.valueOf(c));
+        } else if (isCJKCharacter(c)) {
+          if (currentWord.length() > 0) {
+            words.add(currentWord.toString());
+            currentWord.setLength(0);
+          }
+          currentWord.append(c);
+          words.add(currentWord.toString());
+          currentWord.setLength(0);
+        } else {
+          currentWord.append(c);
+        }
+      }
+      if (currentWord.length() > 0) {
+        words.add(currentWord.toString());
+      }
+      return words;
+    }
+    
+    boolean isCJKCharacter(char c) {
+      return (c >= 0x4E00 && c <= 0x9FFF) ||
+             (c >= 0x3400 && c <= 0x4DBF) ||
+             (c >= 0x3040 && c <= 0x309F) ||
+             (c >= 0x30A0 && c <= 0x30FF) ||
+             (c >= 0xAC00 && c <= 0xD7AF);
+    }
+    
+    void calculateHeight() {
+      float lineHeight = scaleY(22);
+      float entryPadding = scaleY(20);
+      float speakerHeight = scaleY(18);
+      totalHeight = max(wrappedLines.size() * lineHeight + entryPadding + speakerHeight, scaleY(50));
+    }
+    
+    void draw(float x, float y, float alpha, boolean isHovered) {
+      if (y + totalHeight < contentY || y > contentY + contentHeight) {
+        return;
+      }
+      drawEntryBackground(x, y, contentWidth - scaleX(30), totalHeight, alpha, isHovered);
+      if (speaker != null && !speaker.trim().isEmpty()) {
+        drawSpeakerName(x, y, alpha);
+      }
+      drawDialogueContent(x, y, alpha);
+    }
+    
+    void drawEntryBackground(float x, float y, float w, float h, float alpha, boolean isHovered) {
+      for (int i = 0; i < 4; i++) {
+        fill(0, 0, 0, alpha * 0.05);
+        rect(x + i + 2, y + i + 2, w, h, scaleSize(8));
+      }
+      if (isHovered) {
+        drawOptimizedGradientRect(x, y, w, h, color(60, 80, 140, alpha * 0.8), color(40, 60, 120, alpha * 0.8), scaleSize(8));
+      } else {
+        boolean isEven = (originalIndex % 2 == 0);
+        if (isEven) {
+          drawOptimizedGradientRect(x, y, w, h, color(45, 55, 85, alpha * 0.6), color(35, 45, 75, alpha * 0.6), scaleSize(8));
+        } else {
+          drawOptimizedGradientRect(x, y, w, h, color(40, 50, 80, alpha * 0.5), color(30, 40, 70, alpha * 0.5), scaleSize(8));
+        }
+      }
+      stroke(isHovered ? color(150, 200, 255, alpha * 0.8) : color(80, 100, 140, alpha * 0.6));
+      strokeWeight(scaleSize(isHovered ? 2 : 1));
+      noFill();
+      rect(x, y, w, h, scaleSize(8));
+      noStroke();
+    }
+    
+    void drawSpeakerName(float x, float y, float alpha) {
+      fill(255, 220, 100, alpha);
+      textAlign(LEFT, TOP);
+      setResponsiveTextSize(12);
+      text(speaker, x + scaleX(15), y + scaleY(8));
+    }
+    
+    void drawDialogueContent(float x, float y, float alpha) {
+      fill(255, 255, 255, alpha);
+      textAlign(LEFT, TOP);
+      setResponsiveTextSize(14);
+      float currentY = y + scaleY(speaker != null && !speaker.trim().isEmpty() ? 28 : 12);
+      float lineHeight = scaleY(22);
+      for (String line : wrappedLines) {
+        if (line != null) {
+          text(line, x + scaleX(15), currentY);
+        }
+        currentY += lineHeight;
+        if (currentY > contentY + contentHeight + scaleY(10)) {
+          break;
+        }
+      }
+    }
+  }
+  
+  // 響應式設計方法
+  float getScaleX() { return width / baseWidth; }
+  float getScaleY() { return height / baseHeight; }
+  float getUniformScale() { return min(getScaleX(), getScaleY()); }
+  float scaleX(float x) { return x * getScaleX(); }
+  float scaleY(float y) { return y * getScaleY(); }
+  float scaleSize(float size) { return size * getUniformScale(); }
+  void setResponsiveTextSize(float baseSize) { textSize(scaleSize(baseSize)); }
+  
+  // 漸層繪製方法
+  void drawOptimizedGradientRect(float x, float y, float w, float h, color c1, color c2, float radius) {
+    noStroke();
+    int steps = max(8, (int)(h/6));
+    for (int i = 0; i < steps; i++) {
+      float inter = map(i, 0, steps-1, 0, 1);
+      color c = lerpColor(c1, c2, inter);
+      fill(c);
+      float rectY = y + (h * i / steps);
+      float rectH = h / steps + 1;
+      if (i == 0) {
+        rect(x, rectY, w, rectH, radius, radius, 0, 0);
+      } else if (i == steps-1) {
+        rect(x, rectY, w, rectH, 0, 0, radius, radius);
+      } else {
+        rect(x, rectY, w, rectH);
+      }
+    }
+  }
+  
+  // 更新UI佈局
+  void updateLayout() {
+    panelWidth = min(scaleX(1100), width * 0.95);
+    panelHeight = min(scaleY(700), height * 0.9);
+    panelX = (width - panelWidth) / 2;
+    panelY = (height - panelHeight) / 2;
+    headerHeight = scaleY(100);
+    footerHeight = scaleY(80);
+    contentX = panelX + scaleX(25);
+    contentY = panelY + headerHeight + scaleY(10);
+    contentWidth = panelWidth - scaleX(50) - scrollBarWidth - scaleX(10);
+    contentHeight = panelHeight - headerHeight - footerHeight - scaleY(20);
+    contentWidth = max(contentWidth, scaleX(400));
+    contentHeight = max(contentHeight, scaleY(300));
+    scrollBarX = panelX + panelWidth - scaleX(35) - scrollBarWidth;
+    needsRerender = true;
+    updateScrollBar();
+  }
+  
+  // 添加歷史記錄
+  void addToHistory(String nodeId, String speaker, String text) {
+    if (text == null || text.trim().isEmpty()) {
+      println("跳過空白對話記錄");
+      return;
+    }
+    if (currentGameSession.isEmpty()) {
+      currentGameSession = generateSessionId();
+      println("創建新遊戲會話: " + currentGameSession);
+    }
+    String cleanText = text.trim();
+    String cleanSpeaker = (speaker != null) ? speaker.trim() : "";
+    String cleanNodeId = (nodeId != null) ? nodeId.trim() : "";
+    String uniqueKey = currentGameSession + "_" + cleanNodeId + "_" + cleanSpeaker + "_" + cleanText.hashCode();
+    if (addedEntries.contains(uniqueKey)) {
+      println("跳過重複的對話記錄: " + cleanNodeId);
+      return;
+    }
+    DialogueHistoryEntry newEntry = new DialogueHistoryEntry(cleanNodeId, cleanSpeaker, cleanText);
+    historyEntries.add(newEntry);
+    addedEntries.add(uniqueKey);
+    while (historyEntries.size() > maxHistoryItems) {
+      DialogueHistoryEntry removedEntry = historyEntries.remove(0);
+      if (removedEntry != null && removedEntry.uniqueKey != null) {
+        addedEntries.remove(removedEntry.uniqueKey);
+      }
+    }
+    needsRerender = true;
+    println("添加對話記錄: " + cleanNodeId + " (會話: " + currentGameSession + ", 總計: " + historyEntries.size() + ")");
+  }
+  
+  // 顯示歷史界面
+  void showHistory() {
+    showingHistory = true;
+    targetHistoryAlpha = 255;
+    scrollOffset = 0;
+    targetScrollOffset = 0;
+    updateLayout();
+    renderContent();
+    println("顯示對話歷史 (共 " + historyEntries.size() + " 條記錄)");
+  }
+  
+  void hideHistory() {
+    showingHistory = false;
+    targetHistoryAlpha = 0;
+  }
+  
+  void toggleHistory() {
+    if (showingHistory) {
+      hideHistory();
+    } else {
+      showHistory();
+    }
+  }
+  
+  // 更新動畫和滾動
+  void updateAnimations() {
+    if (abs(width - lastWindowWidth) > 1 || abs(height - lastWindowHeight) > 1) {
+      updateLayout();
+      lastWindowWidth = width;
+      lastWindowHeight = height;
+    }
+    historyAlpha = lerp(historyAlpha, targetHistoryAlpha, 0.12);
+    scrollOffset = lerp(scrollOffset, targetScrollOffset, scrollSpeed);
+    targetScrollOffset = constrain(targetScrollOffset, 0, maxScrollOffset);
+    scrollOffset = constrain(scrollOffset, 0, maxScrollOffset);
+    float targetScrollBarAnimation = isScrollBarHovered ? 1.0 : 0.0;
+    scrollBarAnimation = lerp(scrollBarAnimation, targetScrollBarAnimation, 0.15);
+    updateScrollBar();
+  }
+  
+  // 渲染歷史內容
+  void renderContent() {
+    if (!needsRerender) {
+      return;
+    }
+    renderedEntries.clear();
+    for (int i = 0; i < historyEntries.size(); i++) {
+      DialogueHistoryEntry entry = historyEntries.get(i);
+      if (entry != null) {
+        RenderedHistoryEntry rendered = new RenderedHistoryEntry(
+          entry.getFormattedText(), i, entry.speaker, entry.timestamp);
+        renderedEntries.add(rendered);
+      }
+    }
+    float currentY = 0;
+    float totalContentHeight = 0;
+    float entrySpacing = scaleY(12);
+    for (RenderedHistoryEntry entry : renderedEntries) {
+      entry.yPosition = currentY;
+      currentY += entry.totalHeight + entrySpacing;
+      totalContentHeight = currentY;
+    }
+    maxScrollOffset = max(0, totalContentHeight - contentHeight);
+    updateScrollBar();
+    needsRerender = false;
+    println("歷史內容渲染完成，共 " + renderedEntries.size() + " 個條目，總高度: " + totalContentHeight);
+  }
+  
+  // 更新滾動條
+  void updateScrollBar() {
+    if (maxScrollOffset <= 0) {
+      scrollBarVisible = false;
+      return;
+    }
+    scrollBarVisible = true;
+    float contentRatio = contentHeight / (contentHeight + maxScrollOffset);
+    scrollBarHeight = contentHeight * contentRatio;
+    scrollBarHeight = max(scrollBarHeight, scaleY(40));
+    if (maxScrollOffset > 0) {
+      float scrollRatio = scrollOffset / maxScrollOffset;
+      scrollBarY = contentY + scrollRatio * (contentHeight - scrollBarHeight);
+    } else {
+      scrollBarY = contentY;
+    }
+  }
+  
+  // 處理滾動
+  void handleScroll(float delta) {
+    if (!showingHistory) return;
+    float scrollAmount = delta * scaleY(scrollStep);
+    targetScrollOffset += scrollAmount;
+    targetScrollOffset = constrain(targetScrollOffset, 0, maxScrollOffset);
+  }
+  
+  // 顯示歷史界面
+  void display() {
+    if (!showingHistory && historyAlpha < 5) {
+      return;
+    }
+    updateAnimations();
+    if (needsRerender) {
+      renderContent();
+    }
+    fill(0, 0, 0, historyAlpha * 0.7);
+    rect(0, 0, width, height);
+    drawMainPanel();
+    drawHeader();
+    drawContent();
+    drawScrollBar();
+    drawFooter();
+    drawCloseButton();
+  }
+  
+  // 主面板
+  void drawMainPanel() {
+    for (int i = 0; i < 8; i++) {
+      fill(0, 0, 0, historyAlpha * 0.08);
+      rect(panelX + i + 2, panelY + i + 2, panelWidth, panelHeight, scaleSize(15));
+    }
+    drawOptimizedGradientRect(panelX, panelY, panelWidth, panelHeight, color(40, 45, 65, historyAlpha), color(25, 30, 45, historyAlpha), scaleSize(15));
+    stroke(120, 140, 180, historyAlpha * 0.8);
+    strokeWeight(scaleSize(2));
+    noFill();
+    rect(panelX, panelY, panelWidth, panelHeight, scaleSize(15));
+    noStroke();
+  }
+  
+  void drawHeader() {
+    fill(255, 220, 100, historyAlpha);
+    textAlign(CENTER, CENTER);
+    setResponsiveTextSize(28);
+    text("對話歷史", width/2, panelY + scaleY(35));
+    fill(180, 200, 220, historyAlpha * 0.8);
+    setResponsiveTextSize(12);
+    text("共 " + historyEntries.size() + " 條對話記錄", width/2, panelY + scaleY(60));
+    float lineY = panelY + scaleY(75);
+    float lineWidth = scaleX(200);
+    for (int i = 0; i < 3; i++) {
+      stroke(255, 220, 100, historyAlpha * (0.8 - i * 0.2));
+      strokeWeight(scaleSize(2 - i));
+      line(width/2 - lineWidth/2, lineY + i, width/2 + lineWidth/2, lineY + i);
+    }
+    noStroke();
+  }
+  
+  void drawContent() {
+    if (renderedEntries.size() == 0) {
+      drawEmptyMessage();
+      return;
+    }
+    updateEntryHovers();
+    for (int i = 0; i < renderedEntries.size(); i++) {
+      RenderedHistoryEntry entry = renderedEntries.get(i);
+      float entryY = contentY + entry.yPosition - scrollOffset;
+      if (entryY + entry.totalHeight >= contentY - scaleY(20) && 
+          entryY <= contentY + contentHeight + scaleY(20)) {
+        boolean isHovered = (entryHovers != null && i < entryHovers.length) ? entryHovers[i] : false;
+        entry.draw(contentX, entryY, historyAlpha, isHovered);
+      }
+    }
+  }
+  
+  void updateEntryHovers() {
+    if (entryHovers == null || entryHovers.length != renderedEntries.size()) {
+      entryHovers = new boolean[renderedEntries.size()];
+    }
+    for (int i = 0; i < entryHovers.length; i++) {
+      entryHovers[i] = false;
+    }
+    if (mouseX >= contentX && mouseX <= contentX + contentWidth &&
+        mouseY >= contentY && mouseY <= contentY + contentHeight) {
+      for (int i = 0; i < renderedEntries.size(); i++) {
+        RenderedHistoryEntry entry = renderedEntries.get(i);
+        float entryY = contentY + entry.yPosition - scrollOffset;
+        if (mouseY >= entryY && mouseY <= entryY + entry.totalHeight) {
+          entryHovers[i] = true;
+          break;
+        }
+      }
+    }
+  }
+  
+  void drawEmptyMessage() {
+    fill(150, 150, 150, historyAlpha);
+    textAlign(CENTER, CENTER);
+    setResponsiveTextSize(18);
+    text("尚無對話記錄", width/2, contentY + contentHeight/2 - scaleY(20));
+    fill(120, 120, 120, historyAlpha * 0.8);
+    setResponsiveTextSize(14);
+    text("開始遊戲後，對話內容將會顯示在這裡", width/2, contentY + contentHeight/2 + scaleY(10));
+  }
+  
+  void drawScrollBar() {
+    if (!scrollBarVisible) return;
+    isScrollBarHovered = mouseX >= scrollBarX && mouseX <= scrollBarX + scrollBarWidth &&
+                        mouseY >= contentY && mouseY <= contentY + contentHeight;
+    fill(50, 50, 70, historyAlpha * 0.6);
+    rect(scrollBarX, contentY, scrollBarWidth, contentHeight, scaleSize(8));
+    color scrollBarColor = isDraggingScrollBar ? 
+      color(200, 220, 255, historyAlpha) :
+      (isScrollBarHovered ? 
+        color(170, 190, 230, historyAlpha * 0.9) : 
+        color(150, 170, 200, historyAlpha * 0.8));
+    fill(scrollBarColor);
+    rect(scrollBarX, scrollBarY, scrollBarWidth, scrollBarHeight, scaleSize(8));
+    stroke(100, 120, 150, historyAlpha * 0.4);
+    strokeWeight(scaleSize(1));
+    noFill();
+    rect(scrollBarX, scrollBarY, scrollBarWidth, scrollBarHeight, scaleSize(8));
+    noStroke();
+  }
+  
+  void drawFooter() {
+    float footerY = panelY + panelHeight - footerHeight + scaleY(45);
+    fill(180, 200, 220, historyAlpha * 0.8);
+    textAlign(CENTER, CENTER);
+    setResponsiveTextSize(12);
+    text("滾輪滾動瀏覽歷史記錄", width/2, footerY);
+    setResponsiveTextSize(10);
+    fill(150, 170, 190, historyAlpha * 0.6);
+    text("ESC 或點擊關閉按鈕退出", width/2, footerY + scaleY(20));
+  }
+  
+  void drawCloseButton() {
+    float buttonSize = scaleSize(35);
+    float buttonX = panelX + panelWidth - scaleX(30);
+    float buttonY = panelY + scaleY(30);
+    boolean isHovered = dist(mouseX, mouseY, buttonX, buttonY) <= buttonSize/2;
+    if (isHovered) {
+      drawOptimizedGradientEllipse(buttonX, buttonY, buttonSize, color(245, 100, 100, historyAlpha), color(220, 80, 80, historyAlpha));
+    } else {
+      drawOptimizedGradientEllipse(buttonX, buttonY, buttonSize, color(100, 60, 60, historyAlpha), color(80, 50, 50, historyAlpha));
+    }
+    stroke(255, 255, 255, historyAlpha * (isHovered ? 1.0 : 0.6));
+    strokeWeight(scaleSize(2));
+    noFill();
+    ellipse(buttonX, buttonY, buttonSize, buttonSize);
+    noStroke();
+    stroke(255, 255, 255, historyAlpha);
+    strokeWeight(scaleSize(3));
+    float iconSize = scaleSize(10);
+    line(buttonX - iconSize/2, buttonY - iconSize/2, buttonX + iconSize/2, buttonY + iconSize/2);
+    line(buttonX + iconSize/2, buttonY - iconSize/2, buttonX - iconSize/2, buttonY + iconSize/2);
+    noStroke();
+  }
+  
+  // 橢圓漸層繪製
+  void drawOptimizedGradientEllipse(float x, float y, float size, color c1, color c2) {
+    noStroke();
+    int steps = max(4, (int)(size/8));
+    for (int i = 0; i < steps; i++) {
+      float inter = map(i, 0, steps-1, 0, 1);
+      color c = lerpColor(c1, c2, inter);
+      fill(c);
+      float currentSize = size - (i * size / steps);
+      ellipse(x, y, currentSize, currentSize);
+    }
+  }
+  
+  // 事件處理方法
+  boolean handleClick(int x, int y) {
+    if (!showingHistory) return false;
+    float buttonSize = scaleSize(35);
+    float buttonX = panelX + panelWidth - scaleX(30);
+    float buttonY = panelY + scaleY(30);
+    if (dist(x, y, buttonX, buttonY) <= buttonSize/2) {
+      hideHistory();
+      return true;
+    }
+    
+    // 滾動條點擊
+    if (scrollBarVisible && 
+        x >= scrollBarX && x <= scrollBarX + scrollBarWidth &&
+        y >= contentY && y <= contentY + contentHeight) {
+      if (y >= scrollBarY && y <= scrollBarY + scrollBarHeight) {
+        isDraggingScrollBar = true;
+      } else {
+        // 點擊軌道直接跳轉
+        float clickRatio = (y - contentY) / contentHeight;
+        targetScrollOffset = clickRatio * maxScrollOffset;
+      }
+      return true;
+    }
+    // 點擊面板外部關閉
+    if (x < panelX || x > panelX + panelWidth ||
+        y < panelY || y > panelY + panelHeight) {
+      hideHistory();
+      return true;
+    }
+    return true;
+  }
+  
+  void handleMouseDragged() {
+    if (!showingHistory || !isDraggingScrollBar || !scrollBarVisible) return;
+    float scrollBarTrackHeight = contentHeight - scrollBarHeight;
+    if (scrollBarTrackHeight <= 0) return;
+    float relativeY = mouseY - contentY;
+    float scrollRatio = constrain(relativeY / scrollBarTrackHeight, 0, 1);
+    targetScrollOffset = scrollRatio * maxScrollOffset;
+    scrollOffset = targetScrollOffset;
+  }
+  
+  void handleMouseReleased() {
+    isDraggingScrollBar = false;
+  }
+  
+  void handleMouseWheel(processing.event.MouseEvent event) {
+    if (!showingHistory) return;
+    if (mouseX >= panelX && mouseX <= panelX + panelWidth &&
+        mouseY >= panelY && mouseY <= panelY + panelHeight) {
+      handleScroll(event.getCount());
+    }
+  }
+  
+  void setMaxHistoryItems(int maxItems) {
+    maxHistoryItems = max(maxItems, 10);
+    while (historyEntries.size() > maxHistoryItems) {
+      DialogueHistoryEntry removedEntry = historyEntries.remove(0);
+      if (removedEntry != null && removedEntry.uniqueKey != null) {
+        addedEntries.remove(removedEntry.uniqueKey);
+      }
+    }
+    needsRerender = true;
+  }
+
+  int getHistoryCount() {
+    return historyEntries.size();
+  }
+
+  ArrayList<String> getHistoryTexts() {
+    ArrayList<String> texts = new ArrayList<String>();
+    for (DialogueHistoryEntry entry : historyEntries) {
+      if (entry != null) {
+        texts.add(entry.getFormattedText());
+      }
+    }
+    return texts;
+  }
+  
+  boolean isShowingHistory() {
+    return showingHistory;
+  }
+  
+  void forceRerender() {
+    needsRerender = true;
+  }
+  
+  boolean containsEntry(String uniqueKey) {
+    return addedEntries.contains(uniqueKey);
+  }
+  
+  boolean hasHistory() {
+    return historyEntries.size() > 0;
+  }
+  
+  String getLatestEntry() {
+    if (historyEntries.size() > 0) {
+      return historyEntries.get(historyEntries.size() - 1).getFormattedText();
+    }
+    return null;
+  }
+  
+  // 獲取當前會話ID
+  String getCurrentSessionId() {
+    return currentGameSession;
+  }
+  
+  // 檢查是否為新遊戲會話
+  boolean isNewGameSession() {
+    return isNewGameSession;
+  }
+}
+
 // 對話系統
 class DialogueSystem {
   HashMap<String, DialogueNode> nodes;
@@ -1198,13 +2025,15 @@ class DialogueSystem {
   int selectedChoice = 0;
   int hoveredChoice = -1;
   boolean[] choiceHover;
-  
   boolean showingMenu = false;
-  boolean showingHistory = false;
   int textDisplayIndex = 0;
   int textSpeed = 2;
   boolean textComplete = false;
   long lastTextUpdate = 0;
+  
+  // 歷史管理器
+  DialogueHistoryManager historyManager;
+  boolean showingHistory = false;
   
   // 自動播放相關
   boolean autoPlay = false;
@@ -1258,6 +2087,7 @@ class DialogueSystem {
     shakeOffset = new PVector(0, 0);
     sceneDisplayNames = new HashMap<String, String>();
     engineSettings = new EngineSettings();
+    historyManager = new DialogueHistoryManager();
     updateScale();
   }
   
@@ -1396,8 +2226,8 @@ class DialogueSystem {
           }
         }
       }
-      if (showingHistory) {
-        drawHistory();
+      if (historyManager.isShowingHistory()) {
+        historyManager.display();
       }
       if (fadeToBlack && engineSettings.enableScreenEffects) {
         updateFadeEffect();
@@ -1477,6 +2307,7 @@ class DialogueSystem {
       waitingForVoice = false;
     }
   }
+
   boolean canAutoAdvance() {
     long currentTime = millis();
     if (waitingForVoice) {
@@ -1499,13 +2330,13 @@ class DialogueSystem {
         return "等待語音完成...";
       }
     }
-    
     long remainingTime = autoPlayDelay - (millis() - autoPlayTimer);
     if (remainingTime > 0) {
       return "自動播放";
     }
     return "自動播放";
   }
+
   color getAutoPlayStatusColor() {
     if (!autoPlay) {
       return color(255);
@@ -1660,40 +2491,9 @@ class DialogueSystem {
     }
   }
   
-  // 響應式歷史繪製
+  // 歷史界面處理方法
   void drawHistory() {
-    fill(0, 0, 0, 220);
-    rect(0, 0, width, height);
-    float historyWidth = width - scaleX(100);
-    float historyHeight = height - scaleY(100);
-    float historyX = scaleX(50);
-    float historyY = scaleY(50);
-    fill(30, 30, 50);
-    rect(historyX, historyY, historyWidth, historyHeight, scaleSize(10));
-    fill(255, 255, 100);
-    textAlign(CENTER);
-    setResponsiveTextSize(18);
-    text("對話歷史", width/2, historyY + scaleY(40));
-    int maxDisplay = min(engineSettings.maxHistoryItems, 15);
-    if (gameState != null && gameState.dialogueHistory.size() > 0) {
-      int startIndex = max(0, gameState.dialogueHistory.size() - maxDisplay);
-      fill(255);
-      textAlign(LEFT);
-      setResponsiveTextSize(14);
-      for (int i = startIndex; i < gameState.dialogueHistory.size(); i++) {
-        String dialogue = gameState.dialogueHistory.get(i);
-        String wrappedDialogue = wrapText(dialogue, int(historyWidth - scaleX(40)));
-        text(wrappedDialogue, historyX + scaleX(20), historyY + scaleY(80 + (i - startIndex) * 30));
-      }
-    }
-    float closeButtonX = width - scaleX(150);
-    float closeButtonY = historyY + scaleY(10);
-    fill(100, 50, 50);
-    rect(closeButtonX, closeButtonY, scaleX(80), scaleY(30), scaleSize(5));
-    fill(255);
-    textAlign(CENTER);
-    setResponsiveTextSize(12);
-    text("關閉", closeButtonX + scaleX(40), closeButtonY + scaleY(20));
+    historyManager.display();
   }
   
   void toggleMenu() {
@@ -1750,6 +2550,7 @@ class DialogueSystem {
     if (gameState != null) {
       gameState.addToHistory(currentNodeId, currentNode.speaker + ": " + currentNode.text);
     }
+    historyManager.addToHistory(currentNodeId, currentNode.speaker, currentNode.text);
   }
 
   // 完整的指令執行器
@@ -1779,6 +2580,7 @@ class DialogueSystem {
           println("⚠ ADD_CHARACTER 指令參數不足或為null");
         }
         break;
+
       case "REMOVE_CHARACTER":
         if (command.target != null && !command.target.trim().isEmpty()) {
           characterManager.removeCharacter(command.target);
@@ -1786,6 +2588,7 @@ class DialogueSystem {
           println("⚠ REMOVE_CHARACTER 指令目標為null或空");
         }
         break;
+
       case "UPDATE_EMOTION":
         if (command.target != null && !command.target.trim().isEmpty() && 
             command.parameters != null && command.parameters.length >= 1) {
@@ -1795,6 +2598,7 @@ class DialogueSystem {
           println("⚠ UPDATE_EMOTION 指令參數不足或為null");
         }
         break;
+
       case "UPDATE_POSITION":
         if (command.target != null && !command.target.trim().isEmpty() && 
             command.parameters != null && command.parameters.length >= 1) {
@@ -1804,6 +2608,7 @@ class DialogueSystem {
           println("⚠ UPDATE_POSITION 指令參數不足或為null");
         }
         break;
+
       case "SET_CHAPTER":
         if (command.parameters != null && command.parameters.length >= 2) {
           try {
@@ -1819,11 +2624,13 @@ class DialogueSystem {
           println("⚠ SET_CHAPTER 指令參數不足或為null");
         }
         break;
+
       case "CLEAR_ALL_CHARACTERS":
         if (characterManager != null) {
           characterManager.clearAllCharacters();
         }
         break;
+
       case "PLAY_SFX":
         if (command.target != null && !command.target.trim().isEmpty() && audioManager != null) {
           String sfxName = command.target.trim();
@@ -1839,6 +2646,7 @@ class DialogueSystem {
           println("⚠ PLAY_SFX 指令參數不足或AudioManager為null");
         }
         break;
+
       case "FADE_TO_BLACK":
         if (engineSettings.enableScreenEffects) {
           fadeToBlack = true;
@@ -1855,6 +2663,7 @@ class DialogueSystem {
           println("執行淡入淡出效果，持續時間: " + fadeDuration + "ms");
         }
         break;
+
       case "SCREEN_SHAKE":
         if (engineSettings.enableScreenEffects) {
           screenShake = true;
@@ -1880,18 +2689,21 @@ class DialogueSystem {
           println("執行螢幕震動效果，強度: " + shakeIntensity + ", 持續時間: " + shakeDuration + "ms");
         }
         break;
+
       case "CHANGE_BGM":
         if (command.parameters != null && command.parameters.length >= 1 && audioManager != null) {
           audioManager.playBGM(command.parameters[0]);
           println("更換BGM: " + command.parameters[0]);
         }
         break;
+
       case "STOP_BGM":
         if (audioManager != null) {
           audioManager.stopBGM();
           println("停止BGM");
         }
         break;
+
       case "SET_VOLUME":
         if (command.parameters != null && command.parameters.length >= 2 && audioManager != null) {
           String volumeType = command.parameters[0];
@@ -1917,6 +2729,7 @@ class DialogueSystem {
           }
         }
         break;
+
       case "WAIT":
         if (command.parameters != null && command.parameters.length >= 1) {
           try {
@@ -1928,6 +2741,7 @@ class DialogueSystem {
           }
         }
         break;
+
       case "SET_TEXT_SPEED":
         if (command.parameters != null && command.parameters.length >= 1) {
           try {
@@ -1940,6 +2754,7 @@ class DialogueSystem {
           }
         }
         break;
+
       case "UNLOCK_CG":
         if (command.parameters != null && command.parameters.length >= 1) {
           println("解鎖CG: " + command.parameters[0]);
@@ -1962,9 +2777,11 @@ class DialogueSystem {
           println("設置場景名稱: " + sceneName + " -> " + displayName);
         }
         break;
+
       case "RETURN_TO_TITLE":
         returnToTitle();
         break;
+
       default:
         println("未知的場景指令: " + command.commandType);
         break;
@@ -2030,7 +2847,6 @@ class DialogueSystem {
         }
       }
     }
-    
     fill(255, 200, 100);
     textAlign(LEFT);
     setResponsiveTextSize(16);
@@ -2040,8 +2856,6 @@ class DialogueSystem {
     String displayText = currentNode.text.substring(0, min(textDisplayIndex, currentNode.text.length()));
     String wrappedText = wrapText(displayText, int(boxWidth - scaleX(40)));
     text(wrappedText, boxX + scaleX(20), boxY + scaleY(30));
-    
-    // 狀態提示
     if (fastForward) {
       fill(255, 255, 100, abs(sin(millis() * 0.01)) * 255);
       textAlign(RIGHT);
@@ -2111,17 +2925,11 @@ class DialogueSystem {
       handleMenuClick(x, y);
       return;
     }
-    if (showingHistory) {
-      float closeButtonX = width - scaleX(150);
-      float closeButtonY = scaleY(60);
-      if (x >= closeButtonX && x <= closeButtonX + scaleX(80) && 
-          y >= closeButtonY && y <= closeButtonY + scaleY(30)) {
-        showingHistory = false;
+    if (historyManager.isShowingHistory()) {
+      if (historyManager.handleClick(x, y)) {
+        return;
       }
-      return;
     }
-    
-    // UI按鈕處理
     float buttonX = width - scaleX(100);
     float buttonWidth = scaleX(80);
     float buttonHeight = scaleY(25);
@@ -2131,14 +2939,23 @@ class DialogueSystem {
         float buttonY = scaleY(20) + i * spacing;
         if (y >= buttonY && y <= buttonY + buttonHeight) {
           switch(i) {
-            case 0: toggleMenu(); break;
-            case 1: showingHistory = !showingHistory; break;
-            case 2: 
+            case 0: // 選單
+              toggleMenu();
+              break;
+
+            case 1: // 歷史
+              historyManager.toggleHistory();
+              break;
+
+            case 2: // 自動
               autoPlay = !autoPlay;
               autoPlayTimer = millis();
-              waitingForVoice = false;
+              if (audioManager != null) {
+                audioManager.playSFX("toggle_switch");
+              }
               break;
-            case 3: 
+
+            case 3: // 存檔
               if (saveSystem != null) {
                 saveSystem.showSaveMenu(true);
               }
@@ -2161,13 +2978,12 @@ class DialogueSystem {
         }
       }
     } else {
-      // 對話推進處理
       if (audioManager != null && audioManager.isVoicePlaying() && audioManager.voiceInterruptible && engineSettings.enableVoiceSkip) {
         audioManager.stopVoice();
         waitingForVoice = false;
         if (!textComplete) {
-          textComplete = true;
           textDisplayIndex = currentNode.text.length();
+          textComplete = true;
         } else {
           nextDialogue();
         }
@@ -2208,6 +3024,7 @@ class DialogueSystem {
         showingMenu = false;
         println("繼續遊戲");
         break;
+
       case 1: 
         if (saveSystem != null) {
           saveSystem.showSaveMenu(true);
@@ -2215,6 +3032,7 @@ class DialogueSystem {
         showingMenu = false;
         println("開啟存檔選單");
         break;
+
       case 2: 
         if (saveSystem != null) {
           saveSystem.showSaveMenu(false);
@@ -2222,6 +3040,7 @@ class DialogueSystem {
         showingMenu = false;
         println("開啟讀檔選單");
         break;
+
       case 3: 
         if (settingsManager != null) {
           settingsManager.showingSettings = true;
@@ -2229,17 +3048,20 @@ class DialogueSystem {
         showingMenu = false;
         println("開啟設定選單");
         break;
-      case 4: 
-        showingHistory = true;
+
+      case 4:
+        historyManager.showHistory();
         showingMenu = false;
         println("開啟對話歷史");
         break;
+
       case 5: 
         if (confirmReturnToTitle()) {
           returnToTitle();
         }
         showingMenu = false;
         break;
+
       case 6:
         if (confirmExit()) {
           exit();
@@ -2345,6 +3167,7 @@ class DialogueSystem {
   
   void scriptSetMaxHistoryItems(int maxItems) {
     engineSettings.maxHistoryItems = max(maxItems, 10); 
+    historyManager.setMaxHistoryItems(maxItems);
   }
   
   // 獲取引擎狀態
@@ -2619,7 +3442,6 @@ class SaveSystem {
     if (currentWord.length() > 0) {
       words.add(currentWord.toString());
     }
-    
     return words.toArray(new String[0]);
   }
   
@@ -2738,8 +3560,7 @@ class SaveSystem {
       float row = i / 3;
       float slotX = slotsStartX + col * (slotWidth + slotSpacingX);
       float slotY = slotsStartY + row * (slotHeight + slotSpacingY);
-      boolean isHovered = mouseX >= slotX && mouseX <= slotX + slotWidth &&
-                        mouseY >= slotY && mouseY <= slotY + slotHeight;
+      boolean isHovered = mouseX >= slotX && mouseX <= slotX + slotWidth && mouseY >= slotY && mouseY <= slotY + slotHeight;
       slotHovers[globalSlotIndex] = isHovered;
     }
   }
@@ -2752,9 +3573,7 @@ class SaveSystem {
     float buttonsStartX = panelX + (panelWidth - totalButtonWidth) / 2;
     for (int i = 0; i < totalPages; i++) {
       float buttonX = buttonsStartX + i * (pageButtonWidth + pageButtonSpacing);
-      
-      boolean isHovered = mouseX >= buttonX && mouseX <= buttonX + pageButtonWidth &&
-                        mouseY >= pageButtonY && mouseY <= pageButtonY + pageButtonHeight;
+      boolean isHovered = mouseX >= buttonX && mouseX <= buttonX + pageButtonWidth && mouseY >= pageButtonY && mouseY <= pageButtonY + pageButtonHeight;
       pageButtonHovers[i] = isHovered;
     }
   }
@@ -2773,13 +3592,9 @@ class SaveSystem {
     textAlign(CENTER);
     setResponsiveTextSize(24);
     text("存檔管理", width/2, panelY + scaleY(25));
-    
-    // 頁面資訊顯示
     fill(180, 200, 220, menuAlpha * 0.8);
     setResponsiveTextSize(12);
     text("第 " + (currentPage + 1) + " 頁 / 共 " + totalPages + " 頁", width/2, panelY + scaleY(45));
-    
-    // 標題下方裝飾線
     stroke(255, 220, 100, menuAlpha * 0.6);
     strokeWeight(scaleSize(2));
     float lineY = panelY + scaleY(55);
@@ -2795,8 +3610,7 @@ class SaveSystem {
     for (int i = 0; i < tabNames.length; i++) {
       float tabX = panelX + i * tabWidth;
       boolean isActive = (i == currentTab);
-      boolean isHovered = mouseX >= tabX && mouseX <= tabX + tabWidth && 
-                         mouseY >= tabY && mouseY <= tabY + tabHeight;
+      boolean isHovered = mouseX >= tabX && mouseX <= tabX + tabWidth && mouseY >= tabY && mouseY <= tabY + tabHeight;
       boolean isDisabled = (i == 0) && !canSave;
       if (isDisabled) {
         fill(20, 25, 35, menuAlpha * 0.5);
@@ -2832,7 +3646,6 @@ class SaveSystem {
       }
       textAlign(CENTER, CENTER);
       setResponsiveTextSize(14);
-      
       String tabText = tabNames[i];
       if (isDisabled) {
         setResponsiveTextSize(11);
@@ -2939,7 +3752,6 @@ class SaveSystem {
     textAlign(LEFT);
     setResponsiveTextSize(12);
     text("存檔 " + (slotIndex + 1), x + scaleX(8), y + scaleY(15));
-    
     if (isDisabledForSave) {
       fill(150, 150, 150, menuAlpha * 0.8);
       textAlign(CENTER, CENTER);
@@ -2984,8 +3796,6 @@ class SaveSystem {
       setResponsiveTextSize(10);
       text("無縮圖", thumbX + thumbW/2, thumbY + thumbH/2);
     }
-    
-    // 縮圖邊框
     stroke(100, 120, 150, alpha * 0.5);
     strokeWeight(scaleSize(1));
     noFill();
@@ -3294,7 +4104,6 @@ class SaveSystem {
       }
       return;
     }
-    
     if (dialogueSystem == null || dialogueSystem.currentNodeId == null || dialogueSystem.currentNodeId.isEmpty()) {
       println("⚠ 對話系統狀態無效，無法存檔");
       if (audioManager != null) {
@@ -3302,7 +4111,6 @@ class SaveSystem {
       }
       return;
     }
-    
     if (gameState == null) {
       println("⚠ 遊戲狀態為空，無法存檔");
       if (audioManager != null) {
@@ -3310,7 +4118,6 @@ class SaveSystem {
       }
       return;
     }
-    
     try {
       JSONObject saveData = new JSONObject();
       saveData.setString("nodeId", dialogueSystem.currentNodeId);
@@ -3538,7 +4345,7 @@ class SaveSystem {
       }
     }
     
-    // 繪製順序：左→右→其他→中（與引擎中相同）
+    // 繪製順序：左→右→其他→中
     for (CharacterManager.CharacterDisplay charDisplay : leftChars) {
       drawSingleCharacterToScreenshotFixed(buffer, charDisplay);
     }
@@ -3747,8 +4554,6 @@ class SettingsManager {
       return String.format("%.2f:1", ratio);
     }
   }
-  
-  // 預設構造函數
   SettingsManager() {
     sliderAnimations = new float[5];
     sliderHovers = new boolean[5];
@@ -3878,14 +4683,10 @@ class SettingsManager {
     noFill();
     rect(panelX, panelY, panelWidth, panelHeight, scaleSize(15));
     noStroke();
-    
-    // 標題
     fill(255, 220, 100, menuAlpha);
     textAlign(CENTER);
     setResponsiveTextSize(28);
     text("遊戲設定", width/2, panelY + scaleY(35));
-    
-    // 標題下方裝飾線
     float lineY = panelY + scaleY(55);
     float lineWidth = scaleX(200);
     for (int i = 0; i < 3; i++) {
@@ -4089,11 +4890,9 @@ class SettingsManager {
     for (int i = 0; i < resolutionOptions.length; i++) {
       float buttonX = x + (i % 2) * buttonSpacingX;
       float buttonY = y + scaleY(20) + (i / 2) * buttonSpacingY;
-      boolean isHovered = mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
-                        mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
+      boolean isHovered = mouseX >= buttonX && mouseX <= buttonX + buttonWidth && mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
       resolutionButtonHovers[i] = isHovered;
-      drawResolutionButton(resolutionOptions[i], buttonX, buttonY, buttonWidth, buttonHeight, 
-                          i == selectedResolutionIndex, isHovered);
+      drawResolutionButton(resolutionOptions[i], buttonX, buttonY, buttonWidth, buttonHeight, i == selectedResolutionIndex, isHovered);
     }
     fill(180, 200, 220, menuAlpha * 0.8);
     textAlign(LEFT);
@@ -4102,25 +4901,14 @@ class SettingsManager {
   }
   
   // 繪製單個解析度按鈕
-  void drawResolutionButton(ResolutionOption option, float x, float y, float w, float h, 
-                          boolean isSelected, boolean isHovered) {
+  void drawResolutionButton(ResolutionOption option, float x, float y, float w, float h, boolean isSelected, boolean isHovered) {
     if (isSelected) {
-      drawOptimizedGradientRect(x, y, w, h,
-                              color(100, 150, 255, menuAlpha),
-                              color(80, 130, 235, menuAlpha),
-                              scaleSize(8));
+      drawOptimizedGradientRect(x, y, w, h, color(100, 150, 255, menuAlpha), color(80, 130, 235, menuAlpha), scaleSize(8));
     } else if (isHovered) {
-      drawOptimizedGradientRect(x, y, w, h,
-                              color(70, 90, 150, menuAlpha),
-                              color(50, 70, 130, menuAlpha),
-                              scaleSize(8));
+      drawOptimizedGradientRect(x, y, w, h, color(70, 90, 150, menuAlpha), color(50, 70, 130, menuAlpha), scaleSize(8));
     } else {
-      drawOptimizedGradientRect(x, y, w, h,
-                              color(40, 50, 80, menuAlpha),
-                              color(30, 40, 70, menuAlpha),
-                              scaleSize(8));
+      drawOptimizedGradientRect(x, y, w, h, color(40, 50, 80, menuAlpha), color(30, 40, 70, menuAlpha), scaleSize(8));
     }
-    
     if (isSelected) {
       stroke(200, 220, 255, menuAlpha);
       strokeWeight(scaleSize(2));
@@ -4185,23 +4973,16 @@ class SettingsManager {
     rect(trackX, trackY, trackWidth, trackHeight, scaleSize(8));
     noStroke();
     float fillWidth = trackWidth * value;
-    drawOptimizedGradientRect(trackX, trackY, fillWidth, trackHeight,
-                            color(100, 150, 255, menuAlpha),
-                            color(120, 170, 255, menuAlpha),
-                            scaleSize(8));
+    drawOptimizedGradientRect(trackX, trackY, fillWidth, trackHeight, color(100, 150, 255, menuAlpha), color(120, 170, 255, menuAlpha), scaleSize(8));
     float handleX = trackX + fillWidth;
     float handleY = trackY + trackHeight/2;
     float handleSize = scaleSize(20);
     fill(0, 0, 0, menuAlpha * 0.3);
     ellipse(handleX + scaleSize(2), handleY + scaleSize(2), handleSize, handleSize);
     if (isHovered || (isDragging && draggingSlider == index && draggingTab == 0)) {
-      drawOptimizedGradientEllipse(handleX, handleY, handleSize,
-                                color(200, 220, 255, menuAlpha),
-                                color(180, 200, 235, menuAlpha));
+      drawOptimizedGradientEllipse(handleX, handleY, handleSize, color(200, 220, 255, menuAlpha), color(180, 200, 235, menuAlpha));
     } else {
-      drawOptimizedGradientEllipse(handleX, handleY, handleSize,
-                                color(160, 180, 220, menuAlpha),
-                                color(140, 160, 200, menuAlpha));
+      drawOptimizedGradientEllipse(handleX, handleY, handleSize, color(160, 180, 220, menuAlpha), color(140, 160, 200, menuAlpha));
     }
     stroke(255, 255, 255, menuAlpha * 0.8);
     strokeWeight(scaleSize(2));
@@ -4226,71 +5007,42 @@ class SettingsManager {
   void drawTextSpeedSlider(String label, float value, float x, float y, int index) {
     boolean isHovered = checkSliderHover(x, y);
     sliderHovers[index] = isHovered;
-    
-    // 標籤文字
     fill(220, 240, 255, menuAlpha);
     textAlign(LEFT, CENTER);
     setResponsiveTextSize(16);
     text(label, x, y - scaleY(5));
-    
-    // 滑桿軌道位置和尺寸
     float trackX = x + scaleX(150);
     float trackY = y - scaleY(8);
     float trackWidth = scaleX(320);
     float trackHeight = scaleY(16);
-    
-    // 繪製軌道背景
     fill(30, 40, 60, menuAlpha);
     rect(trackX, trackY, trackWidth, trackHeight, scaleSize(8));
-    
-    // 軌道邊框
     stroke(80, 100, 140, menuAlpha);
     strokeWeight(scaleSize(1));
     noFill();
     rect(trackX, trackY, trackWidth, trackHeight, scaleSize(8));
     noStroke();
-    
-    // 進度填充
     float fillWidth = trackWidth * value;
-    drawOptimizedGradientRect(trackX, trackY, fillWidth, trackHeight,
-                            color(255, 150, 100, menuAlpha),
-                            color(255, 170, 120, menuAlpha),
-                            scaleSize(8));
-    
-    // 滑桿把手
+    drawOptimizedGradientRect(trackX, trackY, fillWidth, trackHeight, color(255, 150, 100, menuAlpha), color(255, 170, 120, menuAlpha), scaleSize(8));
     float handleX = trackX + fillWidth;
     float handleY = trackY + trackHeight/2;
     float handleSize = scaleSize(20);
-    
-    // 把手陰影
     fill(0, 0, 0, menuAlpha * 0.3);
     ellipse(handleX + scaleSize(2), handleY + scaleSize(2), handleSize, handleSize);
-    
-    // 把手主體
     if (isHovered || (isDragging && draggingSlider == index && draggingTab == 1)) {
-      drawOptimizedGradientEllipse(handleX, handleY, handleSize,
-                                color(255, 200, 150, menuAlpha),
-                                color(255, 180, 130, menuAlpha));
+      drawOptimizedGradientEllipse(handleX, handleY, handleSize, color(255, 200, 150, menuAlpha), color(255, 180, 130, menuAlpha));
     } else {
-      drawOptimizedGradientEllipse(handleX, handleY, handleSize,
-                                color(255, 180, 120, menuAlpha),
-                                color(235, 160, 100, menuAlpha));
+      drawOptimizedGradientEllipse(handleX, handleY, handleSize, color(255, 180, 120, menuAlpha), color(235, 160, 100, menuAlpha));
     }
-    
-    // 把手邊框
     stroke(255, 255, 255, menuAlpha * 0.8);
     strokeWeight(scaleSize(2));
     noFill();
     ellipse(handleX, handleY, handleSize, handleSize);
     noStroke();
-    
-    // 數值顯示
     fill(255, 255, 255, menuAlpha);
     textAlign(RIGHT, CENTER);
     setResponsiveTextSize(14);
     text(textSpeed, x + scaleX(550), y - scaleY(5));
-    
-    // 懸停光暈效果
     if (isHovered) {
       float glowSize = handleSize + scaleSize(8) * sliderAnimations[index];
       stroke(255, 150, 100, menuAlpha * 0.5 * sliderAnimations[index]);
@@ -4307,19 +5059,11 @@ class SettingsManager {
     float buttonY = scaleY(60);
     boolean isHovered = mouseX >= buttonX - buttonSize/2 && mouseX <= buttonX + buttonSize/2 &&
                        mouseY >= buttonY - buttonSize/2 && mouseY <= buttonY + buttonSize/2;
-    
-    // 按鈕背景
     if (isHovered) {
-      drawOptimizedGradientEllipse(buttonX, buttonY, buttonSize,
-                                 color(255, 100, 100, menuAlpha),
-                                 color(235, 80, 80, menuAlpha));
+      drawOptimizedGradientEllipse(buttonX, buttonY, buttonSize, color(255, 100, 100, menuAlpha), color(235, 80, 80, menuAlpha));
     } else {
-      drawOptimizedGradientEllipse(buttonX, buttonY, buttonSize,
-                                 color(100, 50, 50, menuAlpha),
-                                 color(80, 30, 30, menuAlpha));
+      drawOptimizedGradientEllipse(buttonX, buttonY, buttonSize, color(100, 50, 50, menuAlpha), color(80, 30, 30, menuAlpha));
     }
-    
-    // 關閉圖標 (X)
     stroke(255, 255, 255, menuAlpha);
     strokeWeight(scaleSize(3));
     float iconSize = scaleSize(12);
@@ -4337,30 +5081,17 @@ class SettingsManager {
     float panelY = (height - panelHeight) / 2;
     float buttonX = panelX + (panelWidth - buttonWidth) / 2;
     float buttonY = panelY + panelHeight - scaleY(60);
-    boolean isHovered = mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
-                       mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
-    
-    // 按鈕背景
+    boolean isHovered = mouseX >= buttonX && mouseX <= buttonX + buttonWidth && mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
     if (isHovered) {
-      drawOptimizedGradientRect(buttonX, buttonY, buttonWidth, buttonHeight,
-                              color(255, 200, 100, menuAlpha),
-                              color(235, 180, 80, menuAlpha),
-                              scaleSize(8));
+      drawOptimizedGradientRect(buttonX, buttonY, buttonWidth, buttonHeight, color(255, 200, 100, menuAlpha), color(235, 180, 80, menuAlpha), scaleSize(8));
     } else {
-      drawOptimizedGradientRect(buttonX, buttonY, buttonWidth, buttonHeight,
-                              color(100, 80, 50, menuAlpha),
-                              color(80, 60, 30, menuAlpha),
-                              scaleSize(8));
+      drawOptimizedGradientRect(buttonX, buttonY, buttonWidth, buttonHeight, color(100, 80, 50, menuAlpha), color(80, 60, 30, menuAlpha), scaleSize(8));
     }
-    
-    // 按鈕邊框
     stroke(isHovered ? color(255, 255, 255, menuAlpha) : color(150, 130, 100, menuAlpha));
     strokeWeight(scaleSize(2));
     noFill();
     rect(buttonX, buttonY, buttonWidth, buttonHeight, scaleSize(8));
     noStroke();
-    
-    // 按鈕文字
     fill(255, 255, 255, menuAlpha);
     textAlign(CENTER, CENTER);
     setResponsiveTextSize(14);
@@ -4404,8 +5135,7 @@ class SettingsManager {
     float trackY = y - scaleY(25);
     float trackWidth = scaleX(320);
     float trackHeight = scaleY(50);
-    return mouseX >= trackX && mouseX <= trackX + trackWidth &&
-          mouseY >= trackY && mouseY <= trackY + trackHeight;
+    return mouseX >= trackX && mouseX <= trackX + trackWidth && mouseY >= trackY && mouseY <= trackY + trackHeight;
   }
   
   void handleClick(int x, int y) {
@@ -4448,9 +5178,11 @@ class SettingsManager {
               case 0: // 音效設定分頁
                 audioManager.playSFX("audio_setting");
                 break;
+
               case 1: // 遊戲設定分頁
                 audioManager.playSFX("game_setting");
                 break;
+
               case 2: // 畫面設定分頁
                 audioManager.playSFX("display_setting");
                 break;
@@ -4467,9 +5199,11 @@ class SettingsManager {
       case 0:
         handleAudioSettingsClick(x, y, panelX, panelY);
         break;
+
       case 1:
         handleGameSettingsClick(x, y, panelX, panelY);
         break;
+
       case 2:
         handleDisplaySettingsClick(x, y, panelX, panelY);
         break;
@@ -4515,9 +5249,8 @@ class SettingsManager {
       draggingSlider = 4;
       draggingTab = 1;
     }
-    
     if (checkModernToggleClick(x, y, panelX + scaleX(50), contentY + scaleY(100))) {
-      // 這裡可以添加跳過已讀文本的邏輯
+      // 這裡可添加跳過已讀文本的邏輯
       switchToggleTime[1] = millis();
       if (audioManager != null) {
         audioManager.playSFX("toggle_switch");
@@ -4558,8 +5291,7 @@ class SettingsManager {
     float switchHeight = scaleY(38);
     float switchX = toggleX + scaleX(350);
     float switchY = toggleY - scaleY(18);
-    return x >= switchX && x <= switchX + switchWidth &&
-           y >= switchY && y <= switchY + switchHeight;
+    return x >= switchX && x <= switchX + switchWidth && y >= switchY && y <= switchY + switchHeight;
   }
   
   // 選擇解析度
@@ -4627,6 +5359,7 @@ class SettingsManager {
       e.printStackTrace();
     }
   }
+
   boolean checkSliderClick(int x, int y, float sliderX, float sliderY) {
     float trackX = sliderX + scaleX(150);
     float trackY = sliderY - scaleY(25);
@@ -4635,6 +5368,7 @@ class SettingsManager {
     return x >= trackX && x <= trackX + trackWidth &&
            y >= trackY && y <= trackY + trackHeight;
   }
+
   boolean checkToggleClick(int x, int y, float toggleX, float toggleY) {
     float switchX = toggleX + scaleX(350);
     float switchY = toggleY - scaleY(25);
@@ -4643,6 +5377,7 @@ class SettingsManager {
     return x >= switchX && x <= switchX + switchWidth &&
            y >= switchY && y <= switchY + switchHeight;
   }
+
   float calculateSliderValue(int mouseX, float sliderX) {
     float trackX = sliderX + scaleX(150);
     float trackWidth = scaleX(320);
@@ -5111,6 +5846,7 @@ class AudioManager {
     attemptedBGMLoads.add(bgmKey);
     return loadBGMFile(bgmKey);
   }
+
   AudioPlayer loadBGMFile(String bgmName) {
     String[] bgmPaths = {
       "data/audio/bgm/" + bgmName, 
@@ -5246,6 +5982,7 @@ class AudioManager {
     println("標準音效載入失敗，嘗試場景指令路徑: " + sfxKey);
     return loadSFXFileForCommand(sfxKey);
   }
+
   AudioPlayer loadSFXFile(String soundName) {
     println("開始載入音效檔案: " + soundName);
     String[] sfxPaths = {
@@ -5275,7 +6012,6 @@ class AudioManager {
         }
       }
     }
-    
     println("⚠ 標準路徑找不到音效檔案: " + soundName);
     return null;
   }
@@ -5324,7 +6060,6 @@ class AudioManager {
         if (!audioFile.exists()) {
           continue;
         }
-        
         AudioPlayer track = minim.loadFile(filePath);
         if (track != null) {
           sfxSounds.put(name, track);
@@ -5562,7 +6297,6 @@ class AudioManager {
     if (sfxName == null || !sfxSounds.containsKey(sfxName)) {
       return false;
     }
-    
     AudioPlayer sfx = sfxSounds.get(sfxName);
     return sfx != null && sfx.isPlaying();
   }
@@ -5637,7 +6371,6 @@ class AudioManager {
   void scriptSetFadeSpeed(float speed) {
     setFadeSpeed(speed);
   }
-  
   
   // 其他配置方法
   void setAutoBGMEnabled(boolean enabled) {
@@ -5894,7 +6627,7 @@ class CharacterManager {
         charDisplay.isActive = charData.getBoolean("isActive");
       }
       charDisplay.calculatePosition();
-      charDisplay.baseY = height * 1.35; // 使用當前視窗高度
+      charDisplay.baseY = height * 1.35;
       charDisplay.targetY = charDisplay.baseY;
       charDisplay.currentX = charDisplay.targetX;
       charDisplay.currentY = charDisplay.targetY;
@@ -5906,7 +6639,6 @@ class CharacterManager {
   // 批量角色操作
   void updateCharacterEmotion(String character, String emotion) {
     if (character == null || emotion == null) return;
-    
     if (activeCharacters.containsKey(character)) {
       activeCharacters.get(character).updateEmotion(emotion);
     } else {
@@ -5916,7 +6648,6 @@ class CharacterManager {
   
   void updateCharacterPosition(String character, String position) {
     if (character == null || position == null) return;
-    
     if (activeCharacters.containsKey(character)) {
       activeCharacters.get(character).updatePosition(position);
     } else {
@@ -5926,7 +6657,6 @@ class CharacterManager {
   
   void setCharacterVisibility(String character, boolean visible) {
     if (character == null) return;
-    
     if (activeCharacters.containsKey(character)) {
       CharacterDisplay charDisplay = activeCharacters.get(character);
       charDisplay.targetAlpha = visible ? 255 : 0;
@@ -5965,26 +6695,26 @@ class CharacterManager {
     if (activeCharacters.size() == 0) {
       return;
     }
-    
-    // 按位置分組角色
     ArrayList<CharacterDisplay> leftChars = new ArrayList<CharacterDisplay>();
     ArrayList<CharacterDisplay> centerChars = new ArrayList<CharacterDisplay>();
     ArrayList<CharacterDisplay> rightChars = new ArrayList<CharacterDisplay>();
     ArrayList<CharacterDisplay> otherChars = new ArrayList<CharacterDisplay>();
-    
     for (CharacterDisplay charDisplay : activeCharacters.values()) {
       switch(charDisplay.position) {
         case "left":
         case "far_left":
           leftChars.add(charDisplay);
           break;
+
         case "right":
         case "far_right":
           rightChars.add(charDisplay);
           break;
+
         case "center":
           centerChars.add(charDisplay);
           break;
+
         default:
           otherChars.add(charDisplay);
           break;
@@ -6044,7 +6774,6 @@ class CharacterManager {
     String character;
     String position;
     String emotion;
-    
     float x, y;
     float targetX, targetY;
     float currentX, currentY;
@@ -6052,20 +6781,16 @@ class CharacterManager {
     float targetAlpha;
     float scale;
     float targetScale;
-    
     boolean isActive;
     boolean isEntering;
     boolean isExiting;
     boolean shouldRemove;
-    
     float animationSpeed = 0.08;
     float bobAmount = 2;
     float bobSpeed = 0.003;
     float bobOffset;
-    
     long lastEmotionChange = 0;
     float emotionChangeAlpha = 0;
-
     color defaultColor;
     float baseY;
     
@@ -6088,6 +6813,7 @@ class CharacterManager {
       this.currentX = targetX + (isLeftPosition ? -100 : 100);
       this.currentY = this.baseY + 50;
     }
+
     color generateCharacterColor(String characterName) {
       if (characterName == null || characterName.isEmpty()) {
         characterName = "default";
@@ -6114,18 +6840,23 @@ class CharacterManager {
         case "left":
           targetX = width * 0.25;
           break;
+
         case "center":
           targetX = width * 0.5;
           break;
+
         case "right":
           targetX = width * 0.75;
           break;
+
         case "far_left":
           targetX = width * 0.15;
           break;
+
         case "far_right":
           targetX = width * 0.85;
           break;
+
         default:
           targetX = width * 0.5;
           println("⚠ 未知角色位置: " + this.position + "，使用預設位置 center");
@@ -6211,25 +6942,21 @@ class CharacterManager {
       currentY = lerp(currentY, targetY, animationSpeed);
       alpha = lerp(alpha, targetAlpha, animationSpeed);
       scale = lerp(scale, targetScale, animationSpeed);
-      
       if (isActive) {
         y = currentY + sin(millis() * bobSpeed + bobOffset) * bobAmount;
       } else {
         y = currentY;
       }
       x = currentX;
-      
       if (emotionChangeAlpha > 0) {
         emotionChangeAlpha -= 0.02;
         if (emotionChangeAlpha <= 0) {
           emotionChangeAlpha = 0;
         }
       }
-      
       if (isExiting && alpha < 5) {
         shouldRemove = true;
       }
-      
       if (isEntering && abs(alpha - targetAlpha) < 5 && abs(scale - targetScale) < 0.05) {
         isEntering = false;
       }
@@ -6243,13 +6970,11 @@ class CharacterManager {
         matrixPushed = true;
         translate(x, y);
         scale(scale);
-        
         float displayAlpha = alpha;
         if (emotionChangeAlpha > 0) {
           displayAlpha = min(255, alpha + emotionChangeAlpha * 100);
         }
         tint(255, displayAlpha);
-        
         if (charImage != null) {
           displayCharacterImage(charImage);
         } else {
@@ -6271,12 +6996,10 @@ class CharacterManager {
       float sourceHeight = charImage.height;
       float displayHeight = height * 1.2;
       float displayWidth = (sourceWidth / sourceHeight) * displayHeight;
-      
       if (displayWidth > width * 1.2) {
         displayWidth = width * 1.2;
         displayHeight = (sourceHeight / sourceWidth) * displayWidth;
       }
-      
       image(charImage, 0, -displayHeight/2 + 50, displayWidth, displayHeight);
     }
     
@@ -6286,7 +7009,6 @@ class CharacterManager {
       fill(red(defaultColor), green(defaultColor), blue(defaultColor), alpha);
       rectMode(CENTER);
       rect(0, 0, 80, 200, 10);
-      
       fill(255, alpha);
       textAlign(CENTER);
       textSize(12);
@@ -6295,7 +7017,6 @@ class CharacterManager {
         textSize(10);
         text("(" + emotion + ")", 0, 135);
       }
-      
       if (keyPressed && key == 'd') {
         textSize(8);
         text(position, 0, 150);
@@ -6331,6 +7052,7 @@ class BackgroundManager {
   boolean isShowingCloseup = false;
   boolean autoFitScreen = true;
   DebounceManager debounceManager;
+
   BackgroundManager() {
     backgroundImages = new HashMap<String, PImage>();
     attemptedLoads = new ArrayList<String>();
@@ -6591,45 +7313,59 @@ class BackgroundManager {
         case "fade":
           drawFadeTransition();
           break;
+
         case "slide_left":
           drawSlideTransition(-1, 0);
           break;
+
         case "slide_right":
           drawSlideTransition(1, 0);
           break;
+
         case "slide_up":
           drawSlideTransition(0, -1);
           break;
+
         case "slide_down":
           drawSlideTransition(0, 1);
           break;
+
         case "wipe_left":
           drawWipeTransition("left");
           break;
+
         case "wipe_right":
           drawWipeTransition("right");
           break;
+
         case "wipe_up":
           drawWipeTransition("up");
           break;
+
         case "wipe_down":
           drawWipeTransition("down");
           break;
+
         case "circle":
           drawCircleTransition();
           break;
+
         case "zoom_in":
           drawZoomTransition(true);
           break;
+
         case "zoom_out":
           drawZoomTransition(false);
           break;
+
         case "blinds":
           drawBlindsTransition();
           break;
+
         case "crossfade":
           drawCrossfadeTransition();
           break;
+
         default:
           drawFadeTransition();
           break;
@@ -6683,13 +7419,16 @@ class BackgroundManager {
         case "left":
           clipW = (int)(width * progress);
           break;
+
         case "right":
           clipX = (int)(width * (1 - progress));
           clipW = (int)(width * progress);
           break;
+
         case "up":
           clipH = (int)(height * progress);
           break;
+
         case "down":
           clipY = (int)(height * (1 - progress));
           clipH = (int)(height * progress);
@@ -6879,7 +7618,6 @@ class BackgroundManager {
       this.currentX = 0.5;
       this.currentY = 0.5;
       this.currentZoom = 1.0;
-      
       resetEffects();
       this.isActive = true;
       this.alpha = 255;
@@ -6979,38 +7717,50 @@ class BackgroundManager {
       switch(type) {
         case "linear":
           return t;
+
         case "easeIn":
           return t * t;
+
         case "easeOut":
           return 1 - (1 - t) * (1 - t);
+
         case "easeInOut":
           return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
         case "easeInCubic":
           return t * t * t;
+
         case "easeOutCubic":
           return 1 - pow(1 - t, 3);
+
         case "easeInQuart":
           return t * t * t * t;
+
         case "easeOutQuart":
           return 1 - pow(1 - t, 4);
+
         case "easeInBack":
           float c1 = 1.70158;
           float c3 = c1 + 1;
           return c3 * t * t * t - c1 * t * t;
+
         case "easeOutBack":
           float c1_2 = 1.70158;
           float c3_2 = c1_2 + 1;
           return 1 + c3_2 * pow(t - 1, 3) + c1_2 * pow(t - 1, 2);
+
         case "easeInElastic":
           if (t == 0) return 0;
           if (t == 1) return 1;
           float c4 = (2 * PI) / 3;
           return -pow(2, 10 * (t - 1)) * sin((t - 1.1) * c4);
+
         case "easeOutElastic":
           if (t == 0) return 0;
           if (t == 1) return 1;
           float c4_2 = (2 * PI) / 3;
           return pow(2, -10 * t) * sin((t - 0.1) * c4_2) + 1;
+
         case "easeOutBounce":
           float n1 = 7.5625;
           float d1 = 2.75;
@@ -7023,6 +7773,7 @@ class BackgroundManager {
           } else {
             return n1 * (t -= 2.625 / d1) * t + 0.984375;
           }
+
         default:
           return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // 預設 easeInOut
       }
@@ -7266,7 +8017,6 @@ class BackgroundManager {
     }
     closeupCamera.startBreathing(breathBG, intensity, speed);
     isShowingCloseup = true;
-    
     println("開始呼吸效果: " + backgroundName + " 強度:" + intensity + " 速度:" + speed);
   }
   
